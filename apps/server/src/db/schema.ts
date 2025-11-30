@@ -96,14 +96,21 @@ export const sessions = pgTable(
     year: integer('year'), // Release year
     thumbPath: varchar('thumb_path', { length: 500 }), // Poster path (e.g., /library/metadata/123/thumb)
     ratingKey: varchar('rating_key', { length: 255 }), // Plex/Jellyfin media identifier
-    externalSessionId: varchar('external_session_id', { length: 255 }), // Tautulli reference_id for dedup
+    externalSessionId: varchar('external_session_id', { length: 255 }), // External reference for deduplication
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     stoppedAt: timestamp('stopped_at', { withTimezone: true }),
-    durationMs: integer('duration_ms'), // Actual watch duration
+    durationMs: integer('duration_ms'), // Actual watch duration (excludes paused time)
     totalDurationMs: integer('total_duration_ms'), // Total media length
     progressMs: integer('progress_ms'), // Current playback position
+    // Pause tracking - accumulates total paused time across pause/resume cycles
+    lastPausedAt: timestamp('last_paused_at', { withTimezone: true }), // When current pause started
+    pausedDurationMs: integer('paused_duration_ms').notNull().default(0), // Accumulated pause time
+    // Session grouping for "resume where left off" tracking
+    referenceId: uuid('reference_id'), // Links to first session in resume chain
+    watched: boolean('watched').notNull().default(false), // True if user watched 80%+
     ipAddress: varchar('ip_address', { length: 45 }).notNull(),
     geoCity: varchar('geo_city', { length: 255 }),
+    geoRegion: varchar('geo_region', { length: 255 }), // State/province/subdivision
     geoCountry: varchar('geo_country', { length: 100 }),
     geoLat: real('geo_lat'),
     geoLon: real('geo_lon'),
@@ -122,6 +129,8 @@ export const sessions = pgTable(
     index('sessions_state_idx').on(table.state),
     index('sessions_external_session_idx').on(table.serverId, table.externalSessionId),
     index('sessions_device_idx').on(table.userId, table.deviceId),
+    index('sessions_reference_idx').on(table.referenceId), // For session grouping queries
+    index('sessions_user_rating_idx').on(table.userId, table.ratingKey), // For resume detection
   ]
 );
 

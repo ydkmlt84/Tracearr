@@ -57,14 +57,22 @@ export interface Session {
   year: number | null; // Release year
   thumbPath: string | null; // Poster path (e.g., /library/metadata/123/thumb)
   ratingKey: string | null; // Plex/Jellyfin media identifier
-  externalSessionId: string | null; // Tautulli reference_id for dedup
+  externalSessionId: string | null; // External reference for deduplication
   startedAt: Date;
   stoppedAt: Date | null;
-  durationMs: number | null; // Actual watch duration
+  durationMs: number | null; // Actual watch duration (excludes paused time)
   totalDurationMs: number | null; // Total media length
   progressMs: number | null; // Current playback position
+  // Pause tracking - accumulates total paused time across pause/resume cycles
+  lastPausedAt: Date | null; // When current pause started (null if not paused)
+  pausedDurationMs: number; // Accumulated pause time in milliseconds
+  // Session grouping for "resume where left off" tracking
+  referenceId: string | null; // Links to first session in resume chain
+  watched: boolean; // True if user watched 80%+ of content
+  // Network and device info
   ipAddress: string;
   geoCity: string | null;
+  geoRegion: string | null; // State/province/subdivision
   geoCountry: string | null;
   geoLat: number | null;
   geoLon: number | null;
@@ -84,11 +92,14 @@ export interface ActiveSession extends Session {
 }
 
 // Session with user/server details (from paginated API)
-export interface SessionWithDetails extends Omit<Session, 'ratingKey' | 'externalSessionId' | 'totalDurationMs' | 'progressMs'> {
+// When returned from history queries, sessions are grouped by reference_id
+export interface SessionWithDetails extends Omit<Session, 'ratingKey' | 'externalSessionId' | 'totalDurationMs'> {
   username: string;
   userThumb: string | null;
   serverName: string;
   serverType: ServerType;
+  // Number of pause/resume segments in this grouped play (1 = no pauses)
+  segmentCount?: number;
 }
 
 // Rule types
@@ -250,12 +261,22 @@ export interface ClientToServerEvents {
 // User location aggregation (derived from sessions)
 export interface UserLocation {
   city: string | null;
+  region: string | null; // State/province/subdivision
   country: string | null;
   lat: number | null;
   lon: number | null;
   sessionCount: number;
   lastSeenAt: Date;
   ipAddresses: string[];
+}
+
+// Device location summary (where a device has been used from)
+export interface DeviceLocation {
+  city: string | null;
+  region: string | null;
+  country: string | null;
+  sessionCount: number;
+  lastSeenAt: Date;
 }
 
 // User device aggregation (derived from sessions)
@@ -267,6 +288,7 @@ export interface UserDevice {
   platform: string | null;
   sessionCount: number;
   lastSeenAt: Date;
+  locations: DeviceLocation[]; // Where this device has been used from
 }
 
 // API response types

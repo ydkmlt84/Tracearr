@@ -2,6 +2,7 @@
   "name": "tracearr",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Streaming access manager for Plex and Jellyfin",
   "license": "AGPL-3.0",
   "author": "Connor Gallopo",
@@ -19,19 +20,19 @@
     "clean": "turbo clean && rm -rf node_modules"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.1",
-    "@types/node": "^20.11.0",
-    "eslint": "^9.39.1",
-    "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-hooks": "^7.0.1",
-    "globals": "^16.5.0",
-    "prettier": "^3.2.4",
-    "turbo": "^2.0.0",
-    "typescript": "^5.3.3",
-    "typescript-eslint": "^8.48.0"
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^22.10.0",
+    "eslint": "^9.17.0",
+    "eslint-config-prettier": "^10.0.0",
+    "eslint-plugin-react": "^7.37.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "globals": "^16.0.0",
+    "prettier": "^3.4.0",
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.18.0"
   },
-  "packageManager": "pnpm@9.0.0",
+  "packageManager": "pnpm@10.24.0",
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=9.0.0"

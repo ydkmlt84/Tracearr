@@ -11,6 +11,7 @@
  * Server Connection (separate from auth):
  * - POST /plex/connect → Connect a Plex server after login
  * - POST /jellyfin/connect → Connect a Jellyfin server after login
+ * - POST /emby/connect → Connect an Emby server after login
  *
  * Session Management:
  * - GET /me → Get current user info
@@ -22,6 +23,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { localRoutes } from './local.js';
 import { plexRoutes } from './plex.js';
 import { jellyfinRoutes } from './jellyfin.js';
+import { embyRoutes } from './emby.js';
 import { sessionRoutes } from './session.js';
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
@@ -30,6 +32,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   await app.register(localRoutes);
   await app.register(plexRoutes);
   await app.register(jellyfinRoutes);
+  await app.register(embyRoutes);
   await app.register(sessionRoutes);
 };
 

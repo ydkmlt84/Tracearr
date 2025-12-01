@@ -1,12 +1,14 @@
 /**
- * Jellyfin Media Server Client
+ * Emby Media Server Client
  *
- * Implements IMediaServerClient for Jellyfin servers.
+ * Implements IMediaServerClient for Emby servers.
  * Provides a unified interface for session tracking, user management, and library access.
+ *
+ * Based on Emby OpenAPI specification v4.1.1.0
  */
 
 import { decrypt } from '../../../utils/crypto.js';
-import { fetchJson, jellyfinHeaders } from '../../../utils/http.js';
+import { fetchJson, embyHeaders } from '../../../utils/http.js';
 import type {
   IMediaServerClient,
   IMediaServerClientWithHistory,
@@ -24,8 +26,8 @@ import {
   parseActivityLogResponse,
   parseAuthResponse,
   parseUser,
-  type JellyfinActivityEntry,
-  type JellyfinAuthResult,
+  type EmbyActivityEntry,
+  type EmbyAuthResult,
 } from './parser.js';
 
 const CLIENT_NAME = 'Tracearr';
@@ -34,14 +36,14 @@ const DEVICE_ID = 'tracearr-server';
 const DEVICE_NAME = 'Tracearr Server';
 
 /**
- * Jellyfin Media Server client implementation
+ * Emby Media Server client implementation
  *
  * @example
- * const client = new JellyfinClient({ url: 'http://jellyfin.local:8096', token: 'xxx' });
+ * const client = new EmbyClient({ url: 'http://emby.local:8096', token: 'xxx' });
  * const sessions = await client.getSessions();
  */
-export class JellyfinClient implements IMediaServerClient, IMediaServerClientWithHistory {
-  public readonly serverType = 'jellyfin' as const;
+export class EmbyClient implements IMediaServerClient, IMediaServerClientWithHistory {
+  public readonly serverType = 'emby' as const;
 
   private readonly baseUrl: string;
   private readonly apiKey: string;
@@ -53,18 +55,19 @@ export class JellyfinClient implements IMediaServerClient, IMediaServerClientWit
 
   /**
    * Build X-Emby-Authorization header value
+   * Format: MediaBrowser Client="...", Device="...", DeviceId="...", Version="...", Token="..."
    */
   private buildAuthHeader(): string {
     return `MediaBrowser Client="${CLIENT_NAME}", Device="${DEVICE_NAME}", DeviceId="${DEVICE_ID}", Version="${CLIENT_VERSION}", Token="${this.apiKey}"`;
   }
 
   /**
-   * Build headers for Jellyfin API requests
+   * Build headers for Emby API requests
    */
   private buildHeaders(): Record<string, string> {
     return {
       'X-Emby-Authorization': this.buildAuthHeader(),
-      ...jellyfinHeaders(),
+      ...embyHeaders(),
     };
   }
 
@@ -78,7 +81,7 @@ export class JellyfinClient implements IMediaServerClient, IMediaServerClientWit
   async getSessions(): Promise<MediaSession[]> {
     const data = await fetchJson<unknown[]>(`${this.baseUrl}/Sessions`, {
       headers: this.buildHeaders(),
-      service: 'jellyfin',
+      service: 'emby',
       timeout: 10000, // 10s timeout to prevent polling hangs
     });
 
@@ -91,7 +94,7 @@ export class JellyfinClient implements IMediaServerClient, IMediaServerClientWit
   async getUsers(): Promise<MediaUser[]> {
     const data = await fetchJson<unknown[]>(`${this.baseUrl}/Users`, {
       headers: this.buildHeaders(),
-      service: 'jellyfin',
+      service: 'emby',
     });
 
     return parseUsersResponse(data);
@@ -103,7 +106,7 @@ export class JellyfinClient implements IMediaServerClient, IMediaServerClientWit
   async getLibraries(): Promise<MediaLibrary[]> {
     const data = await fetchJson<unknown[]>(`${this.baseUrl}/Library/VirtualFolders`, {
       headers: this.buildHeaders(),
-      service: 'jellyfin',
+      service: 'emby',
     });
 
     return parseLibrariesResponse(data);
@@ -116,7 +119,7 @@ export class JellyfinClient implements IMediaServerClient, IMediaServerClientWit
     try {
       await fetchJson<unknown>(`${this.baseUrl}/System/Info`, {
         headers: this.buildHeaders(),
-        service: 'jellyfin',
+        service: 'emby',
         timeout: 10000,
       });
       return true;
@@ -133,14 +136,14 @@ export class JellyfinClient implements IMediaServerClient, IMediaServerClientWit
    * Get watch history for a specific user
    *
    * Note: Unlike Tautulli, this only returns WHAT was watched, not session details.
-   * For full session history, users would need Jellystat or the Playback Reporting plugin.
+   * For full session history, users would need dedicated Emby plugins.
    */
   async getWatchHistory(options?: {
     userId?: string;
     limit?: number;
   }): Promise<MediaWatchHistoryItem[]> {
     if (!options?.userId) {
-      throw new Error('Jellyfin requires a userId for watch history');
+      throw new Error('Emby requires a userId for watch history');
     }
 
     const params = new URLSearchParams({
@@ -157,7 +160,7 @@ export class JellyfinClient implements IMediaServerClient, IMediaServerClientWit
       `${this.baseUrl}/Users/${options.userId}/Items?${params}`,
       {
         headers: this.buildHeaders(),
-        service: 'jellyfin',
+        service: 'emby',
       }
     );
 
@@ -165,7 +168,7 @@ export class JellyfinClient implements IMediaServerClient, IMediaServerClientWit
   }
 
   // ==========================================================================
-  // Jellyfin-Specific Methods
+  // Emby-Specific Methods
   // ==========================================================================
 
   /**
@@ -203,17 +206,17 @@ export class JellyfinClient implements IMediaServerClient, IMediaServerClientWit
     minDate?: Date;
     limit?: number;
     hasUserId?: boolean;
-  }): Promise<JellyfinActivityEntry[]> {
+  }): Promise<EmbyActivityEntry[]> {
     const params = new URLSearchParams();
-    if (options?.limit) params.append('limit', String(options.limit));
-    if (options?.minDate) params.append('minDate', options.minDate.toISOString());
-    if (options?.hasUserId !== undefined) params.append('hasUserId', String(options.hasUserId));
+    if (options?.limit) params.append('Limit', String(options.limit));
+    if (options?.minDate) params.append('MinDate', options.minDate.toISOString());
+    if (options?.hasUserId !== undefined) params.append('HasUserId', String(options.hasUserId));
 
     const data = await fetchJson<unknown>(
       `${this.baseUrl}/System/ActivityLog/Entries?${params}`,
       {
         headers: this.buildHeaders(),
-        service: 'jellyfin',
+        service: 'emby',
       }
     );
 
@@ -226,12 +229,13 @@ export class JellyfinClient implements IMediaServerClient, IMediaServerClientWit
 
   /**
    * Authenticate with username/password
+   * Note: Emby uses 'Password' field (not 'Pw' like Jellyfin)
    */
   static async authenticate(
     serverUrl: string,
     username: string,
     password: string
-  ): Promise<JellyfinAuthResult | null> {
+  ): Promise<EmbyAuthResult | null> {
     const url = serverUrl.replace(/\/$/, '');
     const authHeader = `MediaBrowser Client="${CLIENT_NAME}", Device="${DEVICE_NAME}", DeviceId="${DEVICE_ID}", Version="${CLIENT_VERSION}"`;
 
@@ -247,9 +251,9 @@ export class JellyfinClient implements IMediaServerClient, IMediaServerClientWit
           },
           body: JSON.stringify({
             Username: username,
-            Pw: password,
+            Password: password, // Emby uses 'Password', not 'Pw'
           }),
-          service: 'jellyfin',
+          service: 'emby',
         }
       );
 
@@ -264,11 +268,11 @@ export class JellyfinClient implements IMediaServerClient, IMediaServerClientWit
   }
 
   /**
-   * Verify if token has admin access to a Jellyfin server
+   * Verify if API key has admin access to an Emby server
    *
    * Handles two token types:
    * 1. User tokens (from AuthenticateByName) - verified via /Users/Me
-   * 2. API keys (created in Jellyfin admin) - verified via /Auth/Keys (requires admin)
+   * 2. API keys (created in Emby admin) - verified via /Auth/Keys (requires admin)
    */
   static async verifyServerAdmin(apiKey: string, serverUrl: string): Promise<boolean> {
     const url = serverUrl.replace(/\/$/, '');
@@ -283,7 +287,7 @@ export class JellyfinClient implements IMediaServerClient, IMediaServerClientWit
     try {
       const data = await fetchJson<Record<string, unknown>>(`${url}/Users/Me`, {
         headers,
-        service: 'jellyfin',
+        service: 'emby',
         timeout: 10000,
       });
 
@@ -298,7 +302,7 @@ export class JellyfinClient implements IMediaServerClient, IMediaServerClientWit
     try {
       await fetchJson<unknown>(`${url}/Auth/Keys`, {
         headers,
-        service: 'jellyfin',
+        service: 'emby',
         timeout: 10000,
       });
       // If we can access /Auth/Keys, the token has admin access

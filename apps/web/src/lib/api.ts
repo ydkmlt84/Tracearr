@@ -143,9 +143,13 @@ class ApiClient {
     isRetry = false
   ): Promise<T> {
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
     };
+
+    // Only set Content-Type for requests with a body
+    if (options.body) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     // Add Authorization header if we have a token
     const token = tokenStorage.getAccessToken();
@@ -160,7 +164,10 @@ class ApiClient {
     });
 
     // Handle 401 with automatic token refresh (skip for auth endpoints to avoid loops)
-    if (response.status === 401 && !isRetry && !path.startsWith('/auth/')) {
+    // Note: /auth/me is NOT in this list - it SHOULD trigger token refresh on 401
+    const noRetryPaths = ['/auth/login', '/auth/signup', '/auth/refresh', '/auth/logout', '/auth/plex/check-pin', '/auth/callback'];
+    const shouldRetry = !noRetryPaths.some(p => path.startsWith(p));
+    if (response.status === 401 && !isRetry && shouldRetry) {
       const refreshed = await this.handleTokenRefresh();
       if (refreshed) {
         // Retry the original request with new token
@@ -173,6 +180,12 @@ class ApiClient {
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       throw new Error(error.message ?? `Request failed: ${response.status}`);
+    }
+
+    // Handle empty responses (204 No Content) or responses without JSON
+    const contentType = response.headers.get('content-type');
+    if (response.status === 204 || !contentType?.includes('application/json')) {
+      return undefined as T;
     }
 
     return response.json();
@@ -221,10 +234,10 @@ class ApiClient {
       }),
 
     // Plex OAuth - Step 1: Get PIN
-    loginPlex: () =>
+    loginPlex: (forwardUrl?: string) =>
       this.request<{ pinId: string; authUrl: string }>('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ type: 'plex' }),
+        body: JSON.stringify({ type: 'plex', forwardUrl }),
       }),
 
     // Plex OAuth - Step 2: Check PIN and get servers
@@ -241,18 +254,32 @@ class ApiClient {
         body: JSON.stringify(data),
       }),
 
-    // Jellyfin server connection (requires auth)
-    connectJellyfin: (data: {
+    // Jellyfin server connection with API key (requires auth)
+    connectJellyfinWithApiKey: (data: {
       serverUrl: string;
       serverName: string;
-      username: string;
-      password: string;
+      apiKey: string;
     }) =>
       this.request<{
         accessToken: string;
         refreshToken: string;
         user: User;
-      }>('/auth/jellyfin/connect', {
+      }>('/auth/jellyfin/connect-api-key', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    // Emby server connection with API key (requires auth)
+    connectEmbyWithApiKey: (data: {
+      serverUrl: string;
+      serverName: string;
+      apiKey: string;
+    }) =>
+      this.request<{
+        accessToken: string;
+        refreshToken: string;
+        user: User;
+      }>('/auth/emby/connect-api-key', {
         method: 'POST',
         body: JSON.stringify(data),
       }),

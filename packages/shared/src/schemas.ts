@@ -13,20 +13,20 @@ export const paginationSchema = z.object({
 
 // Auth schemas
 export const loginSchema = z.object({
-  serverType: z.enum(['plex', 'jellyfin']),
+  serverType: z.enum(['plex', 'jellyfin', 'emby']),
   returnUrl: z.url().optional(),
 });
 
 export const callbackSchema = z.object({
   code: z.string().optional(),
   token: z.string().optional(),
-  serverType: z.enum(['plex', 'jellyfin']),
+  serverType: z.enum(['plex', 'jellyfin', 'emby']),
 });
 
 // Server schemas
 export const createServerSchema = z.object({
   name: z.string().min(1).max(100),
-  type: z.enum(['plex', 'jellyfin']),
+  type: z.enum(['plex', 'jellyfin', 'emby']),
   url: z.url(),
   token: z.string().min(1),
 });

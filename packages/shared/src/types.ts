@@ -3,7 +3,7 @@
  */
 
 // Server types
-export type ServerType = 'plex' | 'jellyfin';
+export type ServerType = 'plex' | 'jellyfin' | 'emby';
 
 export interface Server {
   id: string;

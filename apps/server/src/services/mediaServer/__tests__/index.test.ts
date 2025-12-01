@@ -20,6 +20,7 @@ import {
   supportsWatchHistory,
   PlexClient,
   JellyfinClient,
+  EmbyClient,
   type IMediaServerClient,
   type MediaSession,
   type MediaUser,
@@ -53,11 +54,22 @@ describe('createMediaServerClient', () => {
     expect(client.serverType).toBe('jellyfin');
   });
 
+  it('should create EmbyClient for type "emby"', () => {
+    const client = createMediaServerClient({
+      type: 'emby',
+      url: 'http://emby.local:8096',
+      token: 'encrypted-token',
+    });
+
+    expect(client).toBeInstanceOf(EmbyClient);
+    expect(client.serverType).toBe('emby');
+  });
+
   it('should throw error for unknown server type', () => {
     expect(() =>
       createMediaServerClient({
-        type: 'emby' as 'plex', // Force invalid type
-        url: 'http://emby.local:8096',
+        type: 'unknown' as 'plex', // Force invalid type
+        url: 'http://unknown.local:8096',
         token: 'token',
       })
     ).toThrow('Unknown media server type');
@@ -111,6 +123,16 @@ describe('supportsWatchHistory', () => {
 
     expect(supportsWatchHistory(client)).toBe(true);
   });
+
+  it('should return true for EmbyClient', () => {
+    const client = createMediaServerClient({
+      type: 'emby',
+      url: 'http://emby.local:8096',
+      token: 'token',
+    });
+
+    expect(supportsWatchHistory(client)).toBe(true);
+  });
 });
 
 // ============================================================================
@@ -118,10 +140,15 @@ describe('supportsWatchHistory', () => {
 // ============================================================================
 
 describe('IMediaServerClient Interface Compliance', () => {
-  const createTestClient = (type: 'plex' | 'jellyfin'): IMediaServerClient => {
+  const createTestClient = (type: 'plex' | 'jellyfin' | 'emby'): IMediaServerClient => {
+    const urls = {
+      plex: 'http://plex.local:32400',
+      jellyfin: 'http://jellyfin.local:8096',
+      emby: 'http://emby.local:8096',
+    };
     return createMediaServerClient({
       type,
-      url: type === 'plex' ? 'http://plex.local:32400' : 'http://jellyfin.local:8096',
+      url: urls[type],
       token: 'test-token',
     });
   };
@@ -179,6 +206,33 @@ describe('IMediaServerClient Interface Compliance', () => {
       expect(typeof client.testConnection).toBe('function');
     });
   });
+
+  describe('EmbyClient', () => {
+    it('should implement serverType property', () => {
+      const client = createTestClient('emby');
+      expect(client.serverType).toBe('emby');
+    });
+
+    it('should implement getSessions method', () => {
+      const client = createTestClient('emby');
+      expect(typeof client.getSessions).toBe('function');
+    });
+
+    it('should implement getUsers method', () => {
+      const client = createTestClient('emby');
+      expect(typeof client.getUsers).toBe('function');
+    });
+
+    it('should implement getLibraries method', () => {
+      const client = createTestClient('emby');
+      expect(typeof client.getLibraries).toBe('function');
+    });
+
+    it('should implement testConnection method', () => {
+      const client = createTestClient('emby');
+      expect(typeof client.testConnection).toBe('function');
+    });
+  });
 });
 
 // ============================================================================
@@ -225,6 +279,16 @@ describe('JellyfinClient Static Methods', () => {
   });
 });
 
+describe('EmbyClient Static Methods', () => {
+  it('should have authenticate static method', () => {
+    expect(typeof EmbyClient.authenticate).toBe('function');
+  });
+
+  it('should have verifyServerAdmin static method', () => {
+    expect(typeof EmbyClient.verifyServerAdmin).toBe('function');
+  });
+});
+
 // ============================================================================
 // Type Export Tests
 // ============================================================================
@@ -246,6 +310,11 @@ describe('Module Exports', () => {
   it('should export JellyfinClient class', () => {
     expect(JellyfinClient).toBeDefined();
     expect(typeof JellyfinClient).toBe('function');
+  });
+
+  it('should export EmbyClient class', () => {
+    expect(EmbyClient).toBeDefined();
+    expect(typeof EmbyClient).toBe('function');
   });
 
   // Type exports are verified at compile time, but we can check
@@ -273,15 +342,17 @@ describe('Module Exports', () => {
 // ============================================================================
 
 describe('Polymorphic Client Usage', () => {
-  it('should allow treating both clients as IMediaServerClient', () => {
+  it('should allow treating all clients as IMediaServerClient', () => {
     const clients: IMediaServerClient[] = [
       createMediaServerClient({ type: 'plex', url: 'http://plex:32400', token: 'plex-token' }),
       createMediaServerClient({ type: 'jellyfin', url: 'http://jellyfin:8096', token: 'jelly-token' }),
+      createMediaServerClient({ type: 'emby', url: 'http://emby:8096', token: 'emby-token' }),
     ];
 
-    expect(clients).toHaveLength(2);
+    expect(clients).toHaveLength(3);
     expect(clients[0]!.serverType).toBe('plex');
     expect(clients[1]!.serverType).toBe('jellyfin');
+    expect(clients[2]!.serverType).toBe('emby');
 
     // All should have the same interface methods
     for (const client of clients) {
@@ -296,6 +367,7 @@ describe('Polymorphic Client Usage', () => {
     const servers = [
       { type: 'plex' as const, url: 'http://plex1:32400', token: 'p1' },
       { type: 'jellyfin' as const, url: 'http://jellyfin1:8096', token: 'j1' },
+      { type: 'emby' as const, url: 'http://emby1:8096', token: 'e1' },
       { type: 'plex' as const, url: 'http://plex2:32400', token: 'p2' },
     ];
 
@@ -303,5 +375,6 @@ describe('Polymorphic Client Usage', () => {
 
     expect(clients.filter((c) => c.serverType === 'plex')).toHaveLength(2);
     expect(clients.filter((c) => c.serverType === 'jellyfin')).toHaveLength(1);
+    expect(clients.filter((c) => c.serverType === 'emby')).toHaveLength(1);
   });
 });

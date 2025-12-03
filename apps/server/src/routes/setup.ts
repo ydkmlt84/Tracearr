@@ -23,7 +23,7 @@ export const setupRoutes: FastifyPluginAsync = async (app) => {
     // Check for servers and users in parallel
     const [serverList, ownerList, passwordUserList] = await Promise.all([
       db.select({ id: servers.id }).from(servers).limit(1),
-      db.select({ id: users.id }).from(users).where(eq(users.isOwner, true)).limit(1),
+      db.select({ id: users.id }).from(users).where(eq(users.role, 'owner')).limit(1),
       db.select({ id: users.id }).from(users).where(isNotNull(users.passwordHash)).limit(1),
     ]);
 

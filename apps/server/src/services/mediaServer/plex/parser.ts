@@ -1,0 +1,448 @@
+/**
+ * Plex API Response Parser
+ *
+ * Pure functions for parsing raw Plex API responses into typed objects.
+ * Separated from the client for testability and reuse.
+ */
+
+import {
+  parseString,
+  parseNumber,
+  parseBoolean,
+  parseOptionalString,
+  parseOptionalNumber,
+  parseArray,
+  parseFirstArrayElement,
+} from '../../../utils/parsing.js';
+import type { MediaSession, MediaUser, MediaLibrary, MediaWatchHistoryItem } from '../types.js';
+
+// ============================================================================
+// Raw Plex API Response Types (for internal use)
+// ============================================================================
+
+/** Raw session metadata from Plex API */
+export interface PlexRawSession {
+  sessionKey?: unknown;
+  ratingKey?: unknown;
+  title?: unknown;
+  type?: unknown;
+  duration?: unknown;
+  viewOffset?: unknown;
+  grandparentTitle?: unknown;
+  parentTitle?: unknown;
+  grandparentRatingKey?: unknown;
+  parentIndex?: unknown;
+  index?: unknown;
+  year?: unknown;
+  thumb?: unknown;
+  grandparentThumb?: unknown;
+  art?: unknown;
+  User?: Record<string, unknown>;
+  Player?: Record<string, unknown>;
+  Media?: Array<Record<string, unknown>>;
+  TranscodeSession?: Record<string, unknown>;
+}
+
+// ============================================================================
+// Session Parsing
+// ============================================================================
+
+/**
+ * Parse Plex media type to unified type
+ */
+function parseMediaType(type: unknown): MediaSession['media']['type'] {
+  const typeStr = parseString(type).toLowerCase();
+  switch (typeStr) {
+    case 'movie':
+      return 'movie';
+    case 'episode':
+      return 'episode';
+    case 'track':
+      return 'track';
+    case 'photo':
+      return 'photo';
+    default:
+      return 'unknown';
+  }
+}
+
+/**
+ * Parse player state from Plex to unified state
+ */
+function parsePlaybackState(state: unknown): MediaSession['playback']['state'] {
+  const stateStr = parseString(state, 'playing').toLowerCase();
+  switch (stateStr) {
+    case 'paused':
+      return 'paused';
+    case 'buffering':
+      return 'buffering';
+    default:
+      return 'playing';
+  }
+}
+
+/**
+ * Calculate progress percentage from position and duration
+ */
+function calculateProgress(positionMs: number, durationMs: number): number {
+  if (durationMs <= 0) return 0;
+  return Math.min(100, Math.round((positionMs / durationMs) * 100));
+}
+
+/**
+ * Parse raw Plex session data into a MediaSession object
+ */
+export function parseSession(item: Record<string, unknown>): MediaSession {
+  const player = (item.Player as Record<string, unknown>) ?? {};
+  const user = (item.User as Record<string, unknown>) ?? {};
+  const transcodeSession = item.TranscodeSession as Record<string, unknown> | undefined;
+
+  const durationMs = parseNumber(item.duration);
+  const positionMs = parseNumber(item.viewOffset);
+  const mediaType = parseMediaType(item.type);
+
+  // Get bitrate from Media array (first element)
+  const bitrate = parseNumber(parseFirstArrayElement(item.Media, 'bitrate'));
+
+  // Determine transcode status
+  const videoDecision = parseString(transcodeSession?.videoDecision, 'directplay');
+  const isTranscode = videoDecision !== 'directplay' && videoDecision !== 'copy';
+
+  const session: MediaSession = {
+    sessionKey: parseString(item.sessionKey),
+    mediaId: parseString(item.ratingKey),
+    user: {
+      id: parseString(user.id),
+      username: parseString(user.title),
+      thumb: parseOptionalString(user.thumb),
+    },
+    media: {
+      title: parseString(item.title),
+      type: mediaType,
+      durationMs,
+      year: parseOptionalNumber(item.year),
+      thumbPath: parseOptionalString(item.thumb),
+    },
+    playback: {
+      state: parsePlaybackState(player.state),
+      positionMs,
+      progressPercent: calculateProgress(positionMs, durationMs),
+    },
+    player: {
+      name: parseString(player.title),
+      deviceId: parseString(player.machineIdentifier),
+      product: parseOptionalString(player.product),
+      device: parseOptionalString(player.device),
+      platform: parseOptionalString(player.platform),
+    },
+    network: {
+      // Prefer remote public IP for geo, fall back to local IP
+      ipAddress: parseString(player.remotePublicAddress) || parseString(player.address),
+      isLocal: parseBoolean(player.local),
+    },
+    quality: {
+      bitrate,
+      isTranscode,
+      videoDecision,
+    },
+  };
+
+  // Add episode-specific metadata if this is an episode
+  if (mediaType === 'episode') {
+    session.episode = {
+      showTitle: parseString(item.grandparentTitle),
+      showId: parseOptionalString(item.grandparentRatingKey),
+      seasonNumber: parseNumber(item.parentIndex),
+      episodeNumber: parseNumber(item.index),
+      seasonName: parseOptionalString(item.parentTitle),
+      showThumbPath: parseOptionalString(item.grandparentThumb),
+    };
+  }
+
+  return session;
+}
+
+/**
+ * Parse Plex sessions API response
+ */
+export function parseSessionsResponse(data: unknown): MediaSession[] {
+  const container = data as { MediaContainer?: { Metadata?: unknown[] } };
+  const metadata = container?.MediaContainer?.Metadata;
+  return parseArray(metadata, (item) => parseSession(item as Record<string, unknown>));
+}
+
+// ============================================================================
+// User Parsing
+// ============================================================================
+
+/**
+ * Parse raw Plex user data into a MediaUser object
+ * Used for local server accounts from /accounts endpoint
+ */
+export function parseLocalUser(user: Record<string, unknown>): MediaUser {
+  const userId = parseString(user.id);
+  return {
+    id: userId,
+    username: parseString(user.name),
+    email: undefined, // Local accounts don't have email
+    thumb: parseOptionalString(user.thumb),
+    // Account ID 1 is typically the owner
+    isAdmin: userId === '1' || parseNumber(user.id) === 1,
+    isDisabled: false,
+  };
+}
+
+/**
+ * Parse Plex.tv user data into a MediaUser object
+ * Used for users from plex.tv API endpoints
+ */
+export function parsePlexTvUser(
+  user: Record<string, unknown>,
+  sharedLibraries?: string[]
+): MediaUser {
+  return {
+    id: parseString(user.id),
+    username: parseString(user.username) || parseString(user.title),
+    email: parseOptionalString(user.email),
+    thumb: parseOptionalString(user.thumb),
+    isAdmin: parseBoolean(user.isAdmin),
+    isDisabled: false,
+    isHomeUser: parseBoolean(user.home) || parseBoolean(user.isHomeUser),
+    sharedLibraries: sharedLibraries ?? [],
+  };
+}
+
+/**
+ * Parse Plex local accounts API response
+ */
+export function parseUsersResponse(data: unknown): MediaUser[] {
+  const container = data as { MediaContainer?: { Account?: unknown[] } };
+  const accounts = container?.MediaContainer?.Account;
+  return parseArray(accounts, (user) => parseLocalUser(user as Record<string, unknown>));
+}
+
+// ============================================================================
+// Library Parsing
+// ============================================================================
+
+/**
+ * Parse raw Plex library data into a MediaLibrary object
+ */
+export function parseLibrary(dir: Record<string, unknown>): MediaLibrary {
+  return {
+    id: parseString(dir.key),
+    name: parseString(dir.title),
+    type: parseString(dir.type),
+    agent: parseOptionalString(dir.agent),
+    scanner: parseOptionalString(dir.scanner),
+  };
+}
+
+/**
+ * Parse Plex libraries API response
+ */
+export function parseLibrariesResponse(data: unknown): MediaLibrary[] {
+  const container = data as { MediaContainer?: { Directory?: unknown[] } };
+  const directories = container?.MediaContainer?.Directory;
+  return parseArray(directories, (dir) => parseLibrary(dir as Record<string, unknown>));
+}
+
+// ============================================================================
+// Watch History Parsing
+// ============================================================================
+
+/**
+ * Parse raw Plex watch history item
+ */
+export function parseWatchHistoryItem(item: Record<string, unknown>): MediaWatchHistoryItem {
+  const mediaType = parseMediaType(item.type);
+
+  const historyItem: MediaWatchHistoryItem = {
+    mediaId: parseString(item.ratingKey),
+    title: parseString(item.title),
+    type: mediaType === 'photo' ? 'unknown' : mediaType,
+    // Plex returns Unix timestamp
+    watchedAt: parseNumber(item.lastViewedAt) || parseNumber(item.viewedAt),
+    userId: parseOptionalString(item.accountID),
+  };
+
+  // Add episode metadata if applicable
+  if (mediaType === 'episode') {
+    historyItem.episode = {
+      showTitle: parseString(item.grandparentTitle),
+      seasonNumber: parseOptionalNumber(item.parentIndex),
+      episodeNumber: parseOptionalNumber(item.index),
+    };
+  }
+
+  return historyItem;
+}
+
+/**
+ * Parse Plex watch history API response
+ */
+export function parseWatchHistoryResponse(data: unknown): MediaWatchHistoryItem[] {
+  const container = data as { MediaContainer?: { Metadata?: unknown[] } };
+  const metadata = container?.MediaContainer?.Metadata;
+  return parseArray(metadata, (item) =>
+    parseWatchHistoryItem(item as Record<string, unknown>)
+  );
+}
+
+// ============================================================================
+// Server Resource Parsing (for plex.tv API)
+// ============================================================================
+
+/**
+ * Server connection details
+ */
+export interface PlexServerConnection {
+  protocol: string;
+  address: string;
+  port: number;
+  uri: string;
+  local: boolean;
+}
+
+/**
+ * Server resource from plex.tv
+ */
+export interface PlexServerResource {
+  name: string;
+  product: string;
+  productVersion: string;
+  platform: string;
+  clientIdentifier: string;
+  owned: boolean;
+  accessToken: string;
+  publicAddress: string;
+  connections: PlexServerConnection[];
+}
+
+/**
+ * Parse server connection
+ */
+export function parseServerConnection(conn: Record<string, unknown>): PlexServerConnection {
+  return {
+    protocol: parseString(conn.protocol, 'http'),
+    address: parseString(conn.address),
+    port: parseNumber(conn.port, 32400),
+    uri: parseString(conn.uri),
+    local: parseBoolean(conn.local),
+  };
+}
+
+/**
+ * Parse server resource from plex.tv resources API
+ */
+export function parseServerResource(
+  resource: Record<string, unknown>,
+  fallbackToken: string
+): PlexServerResource {
+  const connections = parseArray(
+    resource.connections,
+    (conn) => parseServerConnection(conn as Record<string, unknown>)
+  );
+
+  return {
+    name: parseString(resource.name, 'Plex Server'),
+    product: parseString(resource.product),
+    productVersion: parseString(resource.productVersion),
+    platform: parseString(resource.platform),
+    clientIdentifier: parseString(resource.clientIdentifier),
+    owned: parseBoolean(resource.owned),
+    accessToken: parseString(resource.accessToken) || fallbackToken,
+    publicAddress: parseString(resource.publicAddress),
+    connections,
+  };
+}
+
+/**
+ * Parse and filter plex.tv resources for owned Plex Media Servers
+ */
+export function parseServerResourcesResponse(
+  data: unknown,
+  fallbackToken: string
+): PlexServerResource[] {
+  if (!Array.isArray(data)) return [];
+
+  return data
+    .filter(
+      (r) =>
+        (r as Record<string, unknown>).provides === 'server' &&
+        (r as Record<string, unknown>).owned === true &&
+        (r as Record<string, unknown>).product === 'Plex Media Server'
+    )
+    .map((r) => parseServerResource(r as Record<string, unknown>, fallbackToken));
+}
+
+// ============================================================================
+// XML Parsing Helpers (for plex.tv endpoints that return XML)
+// ============================================================================
+
+/**
+ * Extract attribute value from XML string
+ */
+export function extractXmlAttribute(xml: string, attr: string): string {
+  const match = xml.match(new RegExp(`${attr}="([^"]+)"`));
+  return match?.[1] ?? '';
+}
+
+/**
+ * Extract ID attribute (handles both 'id' and ' id' patterns)
+ */
+export function extractXmlId(xml: string): string {
+  const match = xml.match(/(?:^|\s)id="([^"]+)"/);
+  return match?.[1] ?? '';
+}
+
+/**
+ * Parse a user from XML (from /api/users endpoint)
+ */
+export function parseXmlUser(userXml: string): MediaUser {
+  return {
+    id: extractXmlId(userXml),
+    username: extractXmlAttribute(userXml, 'username') || extractXmlAttribute(userXml, 'title'),
+    email: extractXmlAttribute(userXml, 'email') || undefined,
+    thumb: extractXmlAttribute(userXml, 'thumb') || undefined,
+    isAdmin: false,
+    isHomeUser: extractXmlAttribute(userXml, 'home') === '1',
+    sharedLibraries: [],
+  };
+}
+
+/**
+ * Parse users from XML response (plex.tv /api/users)
+ */
+export function parseXmlUsersResponse(xml: string): MediaUser[] {
+  const userMatches = Array.from(xml.matchAll(/<User[^>]*(?:\/>|>[\s\S]*?<\/User>)/g));
+  return userMatches.map((match) => parseXmlUser(match[0]));
+}
+
+/**
+ * Parse shared server info from XML (plex.tv /api/servers/{id}/shared_servers)
+ */
+export function parseSharedServersXml(
+  xml: string
+): Map<string, { serverToken: string; sharedLibraries: string[] }> {
+  const userMap = new Map<string, { serverToken: string; sharedLibraries: string[] }>();
+  const serverMatches = Array.from(xml.matchAll(/<SharedServer[^>]*>[\s\S]*?<\/SharedServer>/g));
+
+  for (const match of serverMatches) {
+    const serverXml = match[0];
+    const userId = extractXmlAttribute(serverXml, 'userID');
+    const serverToken = extractXmlAttribute(serverXml, 'accessToken');
+
+    // Get shared libraries - sections with shared="1"
+    const sectionMatches = Array.from(serverXml.matchAll(/<Section[^>]*shared="1"[^>]*>/g));
+    const sharedLibraries = sectionMatches
+      .map((sectionMatch) => extractXmlAttribute(sectionMatch[0], 'key'))
+      .filter((key): key is string => key !== '');
+
+    if (userId) {
+      userMap.set(userId, { serverToken, sharedLibraries });
+    }
+  }
+
+  return userMap;
+}

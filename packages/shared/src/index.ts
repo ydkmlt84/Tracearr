@@ -9,6 +9,9 @@ export type {
   Server,
   // User
   User,
+  ServerUser,
+  ServerUserWithIdentity,
+  ServerUserDetail,
   UserRole,
   AuthUser,
   UserLocation,
@@ -138,4 +141,15 @@ export {
   POLLING_INTERVALS,
   PAGINATION,
   GEOIP_CONFIG,
+  TIME_MS,
+  SESSION_LIMITS,
 } from './constants.js';
+
+// Role helper exports
+export {
+  ROLE_PERMISSIONS,
+  canLogin,
+  hasMinRole,
+  isOwner,
+  isActive,
+} from './types.js';

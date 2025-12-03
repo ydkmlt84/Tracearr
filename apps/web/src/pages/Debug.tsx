@@ -82,7 +82,13 @@ export function Debug() {
     mutationFn: async ({ action, isPost }: { action: string; isPost?: boolean }) => {
       return debugFetch(`/${action}`, { method: isPost ? 'POST' : 'DELETE' });
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      // Factory reset: clear tokens and redirect to login
+      if (variables.action === 'reset') {
+        tokenStorage.clearTokens(true);
+        window.location.href = '/login';
+        return;
+      }
       void queryClient.invalidateQueries();
     },
   });

@@ -1,5 +1,4 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { User } from '@tracearr/shared';
 import { api } from '@/lib/api';
 
 export function useUsers(params: { page?: number; pageSize?: number } = {}) {
@@ -32,7 +31,7 @@ export function useUpdateUser() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<User> }) =>
+    mutationFn: ({ id, data }: { id: string; data: { trustScore?: number } }) =>
       api.users.update(id, data),
     onSuccess: (data, variables) => {
       // Update user in cache

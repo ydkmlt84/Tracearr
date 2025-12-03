@@ -164,17 +164,17 @@ async function convertToHypertable(): Promise<void> {
  * Create continuous aggregates for dashboard performance
  */
 async function createContinuousAggregates(): Promise<void> {
-  // Daily plays by user
+  // Daily plays by server user (per-server account)
   await db.execute(sql`
     CREATE MATERIALIZED VIEW IF NOT EXISTS daily_plays_by_user
     WITH (timescaledb.continuous) AS
     SELECT
       time_bucket('1 day', started_at) AS day,
-      user_id,
+      server_user_id,
       COUNT(*) AS play_count,
       SUM(COALESCE(duration_ms, 0)) AS total_duration_ms
     FROM sessions
-    GROUP BY day, user_id
+    GROUP BY day, server_user_id
     WITH NO DATA
   `);
 
@@ -293,7 +293,7 @@ async function enableCompression(): Promise<void> {
   await db.execute(sql`
     ALTER TABLE sessions SET (
       timescaledb.compress,
-      timescaledb.compress_segmentby = 'user_id, server_id'
+      timescaledb.compress_segmentby = 'server_user_id, server_id'
     )
   `);
 

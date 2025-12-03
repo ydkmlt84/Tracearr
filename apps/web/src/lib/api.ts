@@ -1,6 +1,9 @@
 import type {
   Server,
   User,
+  UserRole,
+  ServerUserWithIdentity,
+  ServerUserDetail,
   Session,
   SessionWithDetails,
   ActiveSession,
@@ -10,6 +13,7 @@ import type {
   DashboardStats,
   PlayStats,
   UserStats,
+  TopUserStats,
   LocationStatsResponse,
   UserLocation,
   UserDevice,
@@ -51,6 +55,9 @@ export interface PlexCheckPinResponse {
 const ACCESS_TOKEN_KEY = 'tracearr_access_token';
 const REFRESH_TOKEN_KEY = 'tracearr_refresh_token';
 
+// Event for auth state changes (logout, token cleared, etc.)
+export const AUTH_STATE_CHANGE_EVENT = 'tracearr:auth-state-change';
+
 // Token management utilities
 export const tokenStorage = {
   getAccessToken: (): string | null => localStorage.getItem(ACCESS_TOKEN_KEY),
@@ -59,27 +66,100 @@ export const tokenStorage = {
     localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
     localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
   },
-  clearTokens: () => {
+  /**
+   * Clear tokens from storage
+   * @param silent - If true, don't dispatch auth change event (used for intentional logout)
+   */
+  clearTokens: (silent = false) => {
     localStorage.removeItem(ACCESS_TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
+    // Dispatch event so auth context can react immediately (unless silent)
+    if (!silent) {
+      window.dispatchEvent(new CustomEvent(AUTH_STATE_CHANGE_EVENT, { detail: { type: 'logout' } }));
+    }
   },
 };
 
 class ApiClient {
   private baseUrl: string;
+  private isRefreshing = false;
+  private refreshPromise: Promise<boolean> | null = null;
 
   constructor(baseUrl: string = API_BASE_PATH) {
     this.baseUrl = baseUrl;
   }
 
+  /**
+   * Attempt to refresh the access token using the refresh token
+   * Returns true if refresh succeeded, false otherwise
+   */
+  private async refreshAccessToken(): Promise<boolean> {
+    const refreshToken = tokenStorage.getRefreshToken();
+    if (!refreshToken) {
+      return false;
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+
+      if (!response.ok) {
+        // Only clear tokens on explicit auth rejection (401/403)
+        // Don't clear on server errors (500, 502, 503) - server might be restarting
+        if (response.status === 401 || response.status === 403) {
+          tokenStorage.clearTokens();
+        }
+        return false;
+      }
+
+      const data = await response.json();
+      if (data.accessToken && data.refreshToken) {
+        tokenStorage.setTokens(data.accessToken, data.refreshToken);
+        return true;
+      }
+
+      return false;
+    } catch {
+      // Network error (server down, timeout, etc.)
+      // DON'T clear tokens - they might still be valid when server comes back
+      return false;
+    }
+  }
+
+  /**
+   * Handle token refresh with deduplication
+   * Multiple concurrent 401s will share the same refresh attempt
+   */
+  private async handleTokenRefresh(): Promise<boolean> {
+    if (this.isRefreshing) {
+      return this.refreshPromise!;
+    }
+
+    this.isRefreshing = true;
+    this.refreshPromise = this.refreshAccessToken().finally(() => {
+      this.isRefreshing = false;
+      this.refreshPromise = null;
+    });
+
+    return this.refreshPromise;
+  }
+
   private async request<T>(
     path: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    isRetry = false
   ): Promise<T> {
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
     };
+
+    // Only set Content-Type for requests with a body
+    if (options.body) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     // Add Authorization header if we have a token
     const token = tokenStorage.getAccessToken();
@@ -93,9 +173,29 @@ class ApiClient {
       headers,
     });
 
+    // Handle 401 with automatic token refresh (skip for auth endpoints to avoid loops)
+    // Note: /auth/me is NOT in this list - it SHOULD trigger token refresh on 401
+    const noRetryPaths = ['/auth/login', '/auth/signup', '/auth/refresh', '/auth/logout', '/auth/plex/check-pin', '/auth/callback'];
+    const shouldRetry = !noRetryPaths.some(p => path.startsWith(p));
+    if (response.status === 401 && !isRetry && shouldRetry) {
+      const refreshed = await this.handleTokenRefresh();
+      if (refreshed) {
+        // Retry the original request with new token
+        return this.request<T>(path, options, true);
+      }
+      // Refresh failed - tokens already cleared by refreshAccessToken() if it was a real auth failure
+      // Don't clear here - might just be a network error (server restarting)
+    }
+
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       throw new Error(error.message ?? `Request failed: ${response.status}`);
+    }
+
+    // Handle empty responses (204 No Content) or responses without JSON
+    const contentType = response.headers.get('content-type');
+    if (response.status === 204 || !contentType?.includes('application/json')) {
+      return undefined as T;
     }
 
     return response.json();
@@ -116,38 +216,39 @@ class ApiClient {
       userId: string;
       username: string;
       email: string | null;
-      thumbUrl: string | null;
-      role: 'owner' | 'guest';
-      trustScore: number;
+      thumbnail: string | null;
+      role: UserRole;
+      aggregateTrustScore: number;
       serverIds: string[];
       hasPassword?: boolean;
       hasPlexLinked?: boolean;
-      // Fallback fields from User type
+      // Fallback fields for backwards compatibility
       id?: string;
       serverId?: string;
-      isOwner?: boolean;
+      thumbUrl?: string | null;
+      trustScore?: number;
     }>('/auth/me'),
     logout: () => this.request<void>('/auth/logout', { method: 'POST' }),
 
-    // Local account signup
-    signup: (data: { username: string; password: string; email?: string }) =>
+    // Local account signup (email for login, username for display)
+    signup: (data: { email: string; username: string; password: string }) =>
       this.request<{ accessToken: string; refreshToken: string; user: User }>('/auth/signup', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
 
-    // Local account login
-    loginLocal: (data: { username: string; password: string }) =>
+    // Local account login (uses email)
+    loginLocal: (data: { email: string; password: string }) =>
       this.request<{ accessToken: string; refreshToken: string; user: User }>('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ type: 'local', ...data }),
       }),
 
     // Plex OAuth - Step 1: Get PIN
-    loginPlex: () =>
+    loginPlex: (forwardUrl?: string) =>
       this.request<{ pinId: string; authUrl: string }>('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ type: 'plex' }),
+        body: JSON.stringify({ type: 'plex', forwardUrl }),
       }),
 
     // Plex OAuth - Step 2: Check PIN and get servers
@@ -164,18 +265,32 @@ class ApiClient {
         body: JSON.stringify(data),
       }),
 
-    // Jellyfin server connection (requires auth)
-    connectJellyfin: (data: {
+    // Jellyfin server connection with API key (requires auth)
+    connectJellyfinWithApiKey: (data: {
       serverUrl: string;
       serverName: string;
-      username: string;
-      password: string;
+      apiKey: string;
     }) =>
       this.request<{
         accessToken: string;
         refreshToken: string;
         user: User;
-      }>('/auth/jellyfin/connect', {
+      }>('/auth/jellyfin/connect-api-key', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    // Emby server connection with API key (requires auth)
+    connectEmbyWithApiKey: (data: {
+      serverUrl: string;
+      serverName: string;
+      apiKey: string;
+    }) =>
+      this.request<{
+        accessToken: string;
+        refreshToken: string;
+        user: User;
+      }>('/auth/emby/connect-api-key', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
@@ -224,11 +339,11 @@ class ApiClient {
       const searchParams = new URLSearchParams();
       if (params?.page) searchParams.set('page', String(params.page));
       if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
-      return this.request<PaginatedResponse<User>>(`/users?${searchParams.toString()}`);
+      return this.request<PaginatedResponse<ServerUserWithIdentity>>(`/users?${searchParams.toString()}`);
     },
-    get: (id: string) => this.request<User>(`/users/${id}`),
-    update: (id: string, data: Partial<User>) =>
-      this.request<User>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    get: (id: string) => this.request<ServerUserDetail>(`/users/${id}`),
+    update: (id: string, data: { trustScore?: number }) =>
+      this.request<ServerUserWithIdentity>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     sessions: (id: string, params?: { page?: number; pageSize?: number }) => {
       const query = new URLSearchParams(params as Record<string, string>).toString();
       return this.request<PaginatedResponse<Session>>(`/users/${id}/sessions?${query}`);
@@ -304,13 +419,13 @@ class ApiClient {
     },
     locations: async (params?: {
       days?: number;
-      userId?: string;
+      serverUserId?: string;
       serverId?: string;
       mediaType?: 'movie' | 'episode' | 'track';
     }) => {
       const searchParams = new URLSearchParams();
       if (params?.days) searchParams.set('days', String(params.days));
-      if (params?.userId) searchParams.set('userId', params.userId);
+      if (params?.serverUserId) searchParams.set('serverUserId', params.serverUserId);
       if (params?.serverId) searchParams.set('serverId', params.serverId);
       if (params?.mediaType) searchParams.set('mediaType', params.mediaType);
       const query = searchParams.toString();
@@ -344,17 +459,7 @@ class ApiClient {
       }>(`/stats/quality?period=${period ?? 'month'}`);
     },
     topUsers: async (period?: string) => {
-      const response = await this.request<{ data: {
-        userId: string;
-        username: string;
-        thumbUrl: string | null;
-        serverId: string | null;
-        trustScore: number;
-        playCount: number;
-        watchTimeHours: number;
-        topMediaType: string | null;
-        topContent: string | null;
-      }[] }>(`/stats/top-users?period=${period ?? 'month'}`);
+      const response = await this.request<{ data: TopUserStats[] }>(`/stats/top-users?period=${period ?? 'month'}`);
       return response.data;
     },
     topContent: async (period?: string) => {

@@ -80,5 +80,12 @@ export default tseslint.config(
       'react/no-unescaped-entities': 'off',
       'react-hooks/set-state-in-effect': 'off',
     },
+  },
+  {
+    files: ['**/*.test.ts', '**/*.test.tsx', '**/test/**/*.ts'],
+    rules: {
+      // Unbound method warnings in tests are false positives when passing to mock callbacks
+      '@typescript-eslint/unbound-method': 'off',
+    },
   }
 );

@@ -13,20 +13,20 @@ export const paginationSchema = z.object({
 
 // Auth schemas
 export const loginSchema = z.object({
-  serverType: z.enum(['plex', 'jellyfin']),
+  serverType: z.enum(['plex', 'jellyfin', 'emby']),
   returnUrl: z.url().optional(),
 });
 
 export const callbackSchema = z.object({
   code: z.string().optional(),
   token: z.string().optional(),
-  serverType: z.enum(['plex', 'jellyfin']),
+  serverType: z.enum(['plex', 'jellyfin', 'emby']),
 });
 
 // Server schemas
 export const createServerSchema = z.object({
   name: z.string().min(1).max(100),
-  type: z.enum(['plex', 'jellyfin']),
+  type: z.enum(['plex', 'jellyfin', 'emby']),
   url: z.url(),
   token: z.string().min(1),
 });
@@ -47,7 +47,7 @@ export const userIdParamSchema = z.object({
 
 // Session schemas
 export const sessionQuerySchema = paginationSchema.extend({
-  userId: uuidSchema.optional(),
+  serverUserId: uuidSchema.optional(),
   serverId: uuidSchema.optional(),
   state: z.enum(['playing', 'paused', 'stopped']).optional(),
   mediaType: z.enum(['movie', 'episode', 'track']).optional(),
@@ -100,7 +100,7 @@ export const createRuleSchema = z.object({
     'geo_restriction',
   ]),
   params: z.record(z.string(), z.unknown()),
-  userId: uuidSchema.nullable().default(null),
+  serverUserId: uuidSchema.nullable().default(null),
   isActive: z.boolean().default(true),
 });
 
@@ -116,7 +116,7 @@ export const ruleIdParamSchema = z.object({
 
 // Violation schemas
 export const violationQuerySchema = paginationSchema.extend({
-  userId: uuidSchema.optional(),
+  serverUserId: uuidSchema.optional(),
   ruleId: uuidSchema.optional(),
   severity: z.enum(['low', 'warning', 'high']).optional(),
   acknowledged: z.coerce.boolean().optional(),
@@ -137,7 +137,7 @@ export const statsQuerySchema = z.object({
 // Location stats with full filtering
 export const locationStatsQuerySchema = z.object({
   days: z.coerce.number().int().min(1).max(365).default(30),
-  userId: uuidSchema.optional(),
+  serverUserId: uuidSchema.optional(),
   serverId: uuidSchema.optional(),
   mediaType: z.enum(['movie', 'episode', 'track']).optional(),
 });

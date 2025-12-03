@@ -10,7 +10,7 @@ import {
   ruleIdParamSchema,
 } from '@tracearr/shared';
 import { db } from '../db/client.js';
-import { rules, users } from '../db/schema.js';
+import { rules, serverUsers } from '../db/schema.js';
 
 export const ruleRoutes: FastifyPluginAsync = async (app) => {
   /**
@@ -22,27 +22,27 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const authUser = request.user;
 
-      // Get all rules, optionally with user information
+      // Get all rules, optionally with server user information
       const ruleList = await db
         .select({
           id: rules.id,
           name: rules.name,
           type: rules.type,
           params: rules.params,
-          userId: rules.userId,
-          username: users.username,
+          serverUserId: rules.serverUserId,
+          username: serverUsers.username,
           isActive: rules.isActive,
           createdAt: rules.createdAt,
           updatedAt: rules.updatedAt,
         })
         .from(rules)
-        .leftJoin(users, eq(rules.userId, users.id))
+        .leftJoin(serverUsers, eq(rules.serverUserId, serverUsers.id))
         .orderBy(rules.name);
 
       // Filter out rules for users not in the accessible servers
-      // Global rules (userId = null) are always visible
+      // Global rules (serverUserId = null) are always visible
       const filteredRules = ruleList.filter((rule) => {
-        if (!rule.userId) return true; // Global rule
+        if (!rule.serverUserId) return true; // Global rule
         // For user-specific rules, we'd need to join through servers
         // For now, return all rules for owners
         return authUser.role === 'owner';
@@ -71,18 +71,18 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
         return reply.forbidden('Only server owners can create rules');
       }
 
-      const { name, type, params, userId, isActive } = body.data;
+      const { name, type, params, serverUserId, isActive } = body.data;
 
-      // Verify userId exists if provided
-      if (userId) {
-        const userRows = await db
+      // Verify serverUserId exists if provided
+      if (serverUserId) {
+        const serverUserRows = await db
           .select()
-          .from(users)
-          .where(eq(users.id, userId))
+          .from(serverUsers)
+          .where(eq(serverUsers.id, serverUserId))
           .limit(1);
 
-        if (userRows.length === 0) {
-          return reply.notFound('User not found');
+        if (serverUserRows.length === 0) {
+          return reply.notFound('Server user not found');
         }
       }
 
@@ -93,7 +93,7 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
           name,
           type,
           params,
-          userId,
+          serverUserId,
           isActive,
         })
         .returning();
@@ -127,14 +127,14 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
           name: rules.name,
           type: rules.type,
           params: rules.params,
-          userId: rules.userId,
-          username: users.username,
+          serverUserId: rules.serverUserId,
+          username: serverUsers.username,
           isActive: rules.isActive,
           createdAt: rules.createdAt,
           updatedAt: rules.updatedAt,
         })
         .from(rules)
-        .leftJoin(users, eq(rules.userId, users.id))
+        .leftJoin(serverUsers, eq(rules.serverUserId, serverUsers.id))
         .where(eq(rules.id, id))
         .limit(1);
 

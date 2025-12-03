@@ -11,7 +11,7 @@ import {
   createTestApp,
   generateTestToken,
   createOwnerPayload,
-  createGuestPayload,
+  createViewerPayload,
   generateExpiredToken,
   generateTamperedToken,
   generateWrongSecretToken,
@@ -102,7 +102,7 @@ describe('Auth Security', () => {
     });
 
     it('should reject tampered tokens', async () => {
-      const validToken = generateTestToken(app, createGuestPayload());
+      const validToken = generateTestToken(app, createViewerPayload());
       const tamperedToken = generateTamperedToken(validToken);
 
       const res = await app.inject({
@@ -178,7 +178,7 @@ describe('Auth Security', () => {
 
   describe('Authorization - Owner-Only Routes', () => {
     it('should reject guest users on owner-only routes', async () => {
-      const guestToken = generateTestToken(app, createGuestPayload());
+      const guestToken = generateTestToken(app, createViewerPayload());
 
       const res = await app.inject({
         method: 'GET',
@@ -215,7 +215,7 @@ describe('Auth Security', () => {
 
     it('should prevent role escalation via token manipulation', async () => {
       // Create a guest token and try to tamper it to become owner
-      const guestToken = generateTestToken(app, createGuestPayload());
+      const guestToken = generateTestToken(app, createViewerPayload());
       
       // Try various tampering techniques
       const tamperedTokens = [

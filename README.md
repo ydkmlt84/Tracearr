@@ -16,7 +16,7 @@
 
 ---
 
-Tracearr is a streaming access manager for **Plex** and **Jellyfin** that answers one question: *Who's actually using my server, and are they sharing their login?*
+Tracearr is a streaming access manager for **Plex**, **Jellyfin**, and **Emby** that answers one question: *Who's actually using my server, and are they sharing their login?*
 
 Unlike monitoring tools that just show you data, Tracearr is built to detect account abuse. See streams in real-time, flag suspicious activity automatically, and get notified the moment something looks off.
 
@@ -37,7 +37,7 @@ Unlike monitoring tools that just show you data, Tracearr is built to detect acc
 
 **Trust Scores** — Users earn (or lose) trust based on their behavior. Violations drop scores automatically.
 
-**Multi-Server** — Connect Plex and Jellyfin instances to the same dashboard. Manage everything in one place.
+**Multi-Server** — Connect Plex, Jellyfin, and Emby instances to the same dashboard. Manage everything in one place.
 
 **Tautulli Import** — Already using Tautulli? Import your watch history so you don't start from scratch.
 
@@ -57,6 +57,7 @@ Tracearr v1 is focused on **detection and alerting**. Automated enforcement—ki
 | Impossible travel alerts | ❌ | ✅ |
 | Trust scoring | ❌ | ✅ |
 | Jellyfin support | ❌ | ✅ |
+| Emby support | ❌ | ✅ |
 | Multi-server dashboard | ❌ | ✅ |
 | Import from Tautulli | — | ✅ |
 
@@ -70,7 +71,7 @@ docker pull ghcr.io/connorgallopo/tracearr:latest
 docker compose -f docker/docker-compose.yml up -d
 ```
 
-Open `http://localhost:3000` and connect your Plex or Jellyfin server.
+Open `http://localhost:3000` and connect your Plex, Jellyfin, or Emby server.
 
 ### Docker Tags
 
@@ -95,7 +96,7 @@ docker pull ghcr.io/connorgallopo/tracearr:nightly
 ### Development Setup
 
 ```bash
-# Install dependencies (requires pnpm 9+, Node.js 20+)
+# Install dependencies (requires pnpm 10+, Node.js 22+)
 pnpm install
 
 # Start database services
@@ -117,7 +118,7 @@ Frontend runs at `localhost:5173`, API at `localhost:3000`.
 
 | Layer | Tech |
 |---|---|
-| Frontend | React 18, TypeScript, Tailwind, shadcn/ui |
+| Frontend | React 19, TypeScript, Tailwind, shadcn/ui |
 | Charts | Highcharts |
 | Maps | Leaflet |
 | Backend | Node.js, Fastify |
@@ -187,7 +188,7 @@ Check the [issues](https://github.com/connorgallopo/Tracearr/issues) for things 
 ## Roadmap
 
 **Alpha** (current — v0.1.x)
-- [x] Multi-server Plex + Jellyfin support
+- [x] Multi-server Plex, Jellyfin, and Emby support
 - [x] Session tracking with full history
 - [x] 5 sharing detection rules
 - [x] Real-time WebSocket updates

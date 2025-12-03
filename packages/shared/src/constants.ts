@@ -84,7 +84,7 @@ export const API_BASE_PATH = `/api/${API_VERSION}`;
 
 // JWT configuration
 export const JWT_CONFIG = {
-  ACCESS_TOKEN_EXPIRY: '1h',
+  ACCESS_TOKEN_EXPIRY: '48h',
   REFRESH_TOKEN_EXPIRY: '30d',
   ALGORITHM: 'HS256',
 } as const;
@@ -107,4 +107,20 @@ export const PAGINATION = {
 export const GEOIP_CONFIG = {
   EARTH_RADIUS_KM: 6371,
   DEFAULT_UNKNOWN_LOCATION: 'Unknown',
+} as const;
+
+// Time constants in milliseconds (avoid magic numbers)
+export const TIME_MS = {
+  SECOND: 1000,
+  MINUTE: 60 * 1000,
+  HOUR: 60 * 60 * 1000,
+  DAY: 24 * 60 * 60 * 1000,
+  WEEK: 7 * 24 * 60 * 60 * 1000,
+} as const;
+
+// Session limits
+export const SESSION_LIMITS = {
+  MAX_RECENT_PER_USER: 100,
+  RESUME_WINDOW_HOURS: 24,
+  WATCH_COMPLETION_THRESHOLD: 0.8,
 } as const;

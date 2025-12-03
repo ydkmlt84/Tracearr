@@ -7,10 +7,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { User as UserIcon, Crown, Clock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { ColumnDef } from '@tanstack/react-table';
-import type { User } from '@tracearr/shared';
+import type { ServerUserWithIdentity } from '@tracearr/shared';
 import { useUsers } from '@/hooks/queries';
 
-const userColumns: ColumnDef<User>[] = [
+const userColumns: ColumnDef<ServerUserWithIdentity>[] = [
   {
     accessorKey: 'username',
     header: 'User',
@@ -32,7 +32,7 @@ const userColumns: ColumnDef<User>[] = [
           <div>
             <div className="flex items-center gap-2">
               <span className="font-medium">{user.username}</span>
-              {user.isOwner && (
+              {user.role === 'owner' && (
                 <span title="Server Owner">
                   <Crown className="h-4 w-4 text-yellow-500" />
                 </span>
@@ -51,15 +51,6 @@ const userColumns: ColumnDef<User>[] = [
     header: 'Trust Score',
     cell: ({ row }) => (
       <TrustScoreBadge score={row.original.trustScore} showLabel />
-    ),
-  },
-  {
-    accessorKey: 'allowGuest',
-    header: 'Guest Access',
-    cell: ({ row }) => (
-      <span className={row.original.allowGuest ? 'text-green-500' : 'text-muted-foreground'}>
-        {row.original.allowGuest ? 'Allowed' : 'Disabled'}
-      </span>
     ),
   },
   {

@@ -27,7 +27,7 @@ export function Login() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading: authLoading, refetch } = useAuth();
 
-  // Setup status
+  // Setup status - default to false (Sign In mode) since most users are returning
   const [setupLoading, setSetupLoading] = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [hasPasswordAuth, setHasPasswordAuth] = useState(false);
@@ -38,6 +38,7 @@ export function Login() {
   const [plexServers, setPlexServers] = useState<PlexServerInfo[]>([]);
   const [plexTempToken, setPlexTempToken] = useState<string | null>(null);
   const [connectingToServer, setConnectingToServer] = useState<string | null>(null);
+  const [plexPopup, setPlexPopup] = useState<Window | null>(null);
 
   // Local auth state
   const [localLoading, setLocalLoading] = useState(false);
@@ -45,19 +46,32 @@ export function Login() {
   const [password, setPassword] = useState('');
   const [email, setEmail] = useState('');
 
-  // Check setup status on mount
+  // Check setup status on mount with retry logic for server restarts
   useEffect(() => {
     async function checkSetup() {
-      try {
-        const status = await api.setup.status();
-        setNeedsSetup(status.needsSetup);
-        setHasPasswordAuth(status.hasPasswordAuth);
-      } catch {
-        // If we can't reach the server, assume setup needed
-        setNeedsSetup(true);
-      } finally {
-        setSetupLoading(false);
+      const maxRetries = 3;
+      const delays = [0, 1000, 2000]; // immediate, 1s, 2s
+
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          if (attempt > 0) {
+            await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+          }
+          const status = await api.setup.status();
+          setNeedsSetup(status.needsSetup);
+          setHasPasswordAuth(status.hasPasswordAuth);
+          setSetupLoading(false);
+          return; // Success - exit retry loop
+        } catch {
+          // Continue to next retry attempt
+        }
       }
+
+      // All retries failed - server is unavailable
+      // Default to Sign In mode (needsSetup: false) since most users are returning users
+      // If they actually need setup, the server will tell them when it comes back
+      setNeedsSetup(false);
+      setSetupLoading(false);
     }
     void checkSetup();
   }, []);
@@ -70,6 +84,14 @@ export function Login() {
     }
   }, [isAuthenticated, authLoading, navigate, searchParams]);
 
+  // Close Plex popup helper
+  const closePlexPopup = () => {
+    if (plexPopup && !plexPopup.closed) {
+      plexPopup.close();
+    }
+    setPlexPopup(null);
+  };
+
   // Poll for Plex PIN claim
   const pollPlexPin = async (pinId: string) => {
     try {
@@ -81,7 +103,10 @@ export function Login() {
         return;
       }
 
-      // PIN claimed! Check what we got back
+      // PIN claimed - close the popup
+      closePlexPopup();
+
+      // Check what we got back
       if (result.needsServerSelection && result.servers && result.tempToken) {
         // New user - needs to select a server
         setPlexServers(result.servers);
@@ -107,17 +132,27 @@ export function Login() {
   // Start Plex OAuth flow
   const handlePlexLogin = async () => {
     setAuthStep('plex-waiting');
+
+    // Open popup to blank page first (same origin) - helps with cross-origin close
+    const popup = window.open('about:blank', 'plex_auth', 'width=600,height=700,popup=yes');
+    setPlexPopup(popup);
+
     try {
-      const result = await api.auth.loginPlex();
+      // Pass callback URL so Plex redirects back to our domain after auth
+      const callbackUrl = `${window.location.origin}/auth/plex-callback`;
+      const result = await api.auth.loginPlex(callbackUrl);
       setPlexAuthUrl(result.authUrl);
 
-      // Open Plex auth in popup
-      window.open(result.authUrl, 'plex_auth', 'width=600,height=700,popup=yes');
+      // Navigate popup to Plex auth
+      if (popup && !popup.closed) {
+        popup.location.href = result.authUrl;
+      }
 
       // Start polling
       void pollPlexPin(result.pinId);
     } catch (error) {
-      resetPlexAuth();
+      closePlexPopup();
+      setAuthStep('initial');
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to start Plex login',
@@ -157,6 +192,11 @@ export function Login() {
 
   // Reset Plex auth state
   const resetPlexAuth = () => {
+    // Close popup if still open
+    if (plexPopup && !plexPopup.closed) {
+      plexPopup.close();
+    }
+    setPlexPopup(null);
     setAuthStep('initial');
     setPlexAuthUrl(null);
     setPlexServers([]);
@@ -171,9 +211,9 @@ export function Login() {
 
     try {
       const result = await api.auth.signup({
+        email: email.trim(),
         username: username.trim(),
         password,
-        email: email.trim() || undefined,
       });
 
       if (result.accessToken && result.refreshToken) {
@@ -200,7 +240,7 @@ export function Login() {
 
     try {
       const result = await api.auth.loginLocal({
-        username: username.trim(),
+        email: email.trim(),
         password,
       });
 
@@ -213,7 +253,7 @@ export function Login() {
     } catch (error) {
       toast({
         title: 'Login failed',
-        description: error instanceof Error ? error.message : 'Invalid username or password',
+        description: error instanceof Error ? error.message : 'Invalid email or password',
         variant: 'destructive',
       });
     } finally {
@@ -376,26 +416,27 @@ export function Login() {
               {needsSetup ? (
                 <form onSubmit={handleLocalSignup} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="username">Username</Label>
-                    <Input
-                      id="username"
-                      type="text"
-                      placeholder="Choose a username"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      required
-                      minLength={3}
-                      maxLength={50}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email (optional)</Label>
+                    <Label htmlFor="email">Email</Label>
                     <Input
                       id="email"
                       type="email"
                       placeholder="your@email.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="username">Display Name</Label>
+                    <Input
+                      id="username"
+                      type="text"
+                      placeholder="Choose a display name"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      required
+                      minLength={3}
+                      maxLength={50}
                     />
                   </div>
                   <div className="space-y-2">
@@ -422,13 +463,13 @@ export function Login() {
               ) : hasPasswordAuth ? (
                 <form onSubmit={handleLocalLogin} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="username">Username</Label>
+                    <Label htmlFor="email">Email</Label>
                     <Input
-                      id="username"
-                      type="text"
-                      placeholder="Your username"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
+                      id="email"
+                      type="email"
+                      placeholder="your@email.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
                       required
                     />
                   </div>

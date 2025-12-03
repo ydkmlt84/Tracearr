@@ -39,11 +39,13 @@ import {
   LogOut,
   Globe,
   AlertTriangle,
+  Plus,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { api } from '@/lib/api';
+import { api, tokenStorage } from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
+import { useAuth } from '@/hooks/useAuth';
 import type { Server, Settings as SettingsType, TautulliImportProgress, MobileSession, MobileQRPayload } from '@tracearr/shared';
 import {
   useSettings,
@@ -173,10 +175,18 @@ function GeneralSettings() {
 }
 
 function ServerSettings() {
-  const { data: serversData, isLoading } = useServers();
+  const { data: serversData, isLoading, refetch } = useServers();
   const deleteServer = useDeleteServer();
   const syncServer = useSyncServer();
+  const { refetch: refetchUser } = useAuth();
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [serverType, setServerType] = useState<'jellyfin' | 'emby'>('jellyfin');
+  const [serverUrl, setServerUrl] = useState('');
+  const [serverName, setServerName] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   // Handle both array and wrapped response formats
   const servers = Array.isArray(serversData)
@@ -193,6 +203,50 @@ function ServerSettings() {
 
   const handleSync = (id: string) => {
     syncServer.mutate(id);
+  };
+
+  const resetAddForm = () => {
+    setServerUrl('');
+    setServerName('');
+    setApiKey('');
+    setConnectError(null);
+    setServerType('jellyfin');
+  };
+
+  const handleAddServer = async () => {
+    if (!serverUrl || !serverName || !apiKey) {
+      setConnectError('All fields are required');
+      return;
+    }
+
+    setIsConnecting(true);
+    setConnectError(null);
+
+    try {
+      const connectFn = serverType === 'jellyfin' ? api.auth.connectJellyfinWithApiKey : api.auth.connectEmbyWithApiKey;
+      const result = await connectFn({
+        serverUrl,
+        serverName,
+        apiKey,
+      });
+
+      // Update tokens if provided
+      if (result.accessToken && result.refreshToken) {
+        tokenStorage.setTokens(result.accessToken, result.refreshToken);
+        await refetchUser();
+      }
+
+      // Refresh server list
+      await refetch();
+
+      // Close dialog and reset form
+      setShowAddDialog(false);
+      resetAddForm();
+    } catch (error) {
+      setConnectError(error instanceof Error ? error.message : 'Failed to connect server');
+    } finally {
+      setIsConnecting(false);
+    }
   };
 
   if (isLoading) {
@@ -219,11 +273,17 @@ function ServerSettings() {
   return (
     <>
       <Card>
-        <CardHeader>
-          <CardTitle>Connected Servers</CardTitle>
-          <CardDescription>
-            Manage your connected Plex and Jellyfin servers
-          </CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Connected Servers</CardTitle>
+            <CardDescription>
+              Manage your connected Plex, Jellyfin, and Emby servers
+            </CardDescription>
+          </div>
+          <Button onClick={() => { setShowAddDialog(true); }}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Server
+          </Button>
         </CardHeader>
         <CardContent>
           {!servers || servers.length === 0 ? (
@@ -231,7 +291,7 @@ function ServerSettings() {
               <ServerIcon className="h-8 w-8 text-muted-foreground" />
               <p className="text-muted-foreground">No servers connected</p>
               <p className="text-xs text-muted-foreground">
-                Log in with Plex or Jellyfin to add a server
+                Click "Add Server" to connect a Jellyfin or Emby server
               </p>
             </div>
           ) : (
@@ -249,6 +309,89 @@ function ServerSettings() {
           )}
         </CardContent>
       </Card>
+
+      {/* Add Server Dialog */}
+      <Dialog open={showAddDialog} onOpenChange={(open) => { if (!open) { resetAddForm(); } setShowAddDialog(open); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Server</DialogTitle>
+            <DialogDescription>
+              Connect a Jellyfin or Emby server to Tracearr. You need administrator access on the server.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Server Type</Label>
+              <Select value={serverType} onValueChange={(v) => { setServerType(v as 'jellyfin' | 'emby'); }}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="jellyfin">Jellyfin</SelectItem>
+                  <SelectItem value="emby">Emby</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="serverUrl">Server URL</Label>
+              <Input
+                id="serverUrl"
+                placeholder="http://192.168.1.100:8096"
+                value={serverUrl}
+                onChange={(e) => { setServerUrl(e.target.value); }}
+              />
+              <p className="text-xs text-muted-foreground">
+                The URL where your {serverType === 'jellyfin' ? 'Jellyfin' : 'Emby'} server is accessible
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="serverName">Server Name</Label>
+              <Input
+                id="serverName"
+                placeholder="My Media Server"
+                value={serverName}
+                onChange={(e) => { setServerName(e.target.value); }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="apiKey">API Key</Label>
+              <Input
+                id="apiKey"
+                type="password"
+                placeholder="Enter your API key"
+                value={apiKey}
+                onChange={(e) => { setApiKey(e.target.value); }}
+              />
+              <p className="text-xs text-muted-foreground">
+                {serverType === 'jellyfin'
+                  ? 'Find this in Jellyfin Dashboard → API Keys'
+                  : 'Find this in Emby Server → API Keys'}
+              </p>
+            </div>
+            {connectError && (
+              <div className="flex items-center gap-2 text-sm text-destructive">
+                <XCircle className="h-4 w-4" />
+                {connectError}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowAddDialog(false); resetAddForm(); }}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddServer} disabled={isConnecting}>
+              {isConnecting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Connecting...
+                </>
+              ) : (
+                'Connect Server'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!deleteId} onOpenChange={() => { setDeleteId(null); }}>

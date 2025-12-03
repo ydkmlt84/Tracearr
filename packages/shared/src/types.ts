@@ -2,8 +2,38 @@
  * Core type definitions for Tracearr
  */
 
+// User role - combined permission level and account status
+// Can log in: owner, admin, viewer
+// Cannot log in: member (default for synced users), disabled, pending
+export type UserRole = 'owner' | 'admin' | 'viewer' | 'member' | 'disabled' | 'pending';
+
+// Role permission hierarchy (higher = more permissions)
+export const ROLE_PERMISSIONS: Record<UserRole, number> = {
+  owner: 4,
+  admin: 3,
+  viewer: 2,
+  member: 1,  // Synced from media server, no Tracearr login until promoted
+  disabled: 0,
+  pending: 0,
+} as const;
+
+// Roles that can log into Tracearr
+const LOGIN_ROLES: UserRole[] = ['owner', 'admin', 'viewer'];
+
+// Role helper functions
+export const canLogin = (role: UserRole): boolean =>
+  LOGIN_ROLES.includes(role);
+
+export const hasMinRole = (
+  userRole: UserRole,
+  required: 'owner' | 'admin' | 'viewer'
+): boolean => ROLE_PERMISSIONS[userRole] >= ROLE_PERMISSIONS[required];
+
+export const isOwner = (role: UserRole): boolean => role === 'owner';
+export const isActive = (role: UserRole): boolean => canLogin(role);
+
 // Server types
-export type ServerType = 'plex' | 'jellyfin';
+export type ServerType = 'plex' | 'jellyfin' | 'emby';
 
 export interface Server {
   id: string;
@@ -14,22 +44,50 @@ export interface Server {
   updatedAt: Date;
 }
 
-// User types
+// User types - Identity layer (the real human)
 export interface User {
   id: string;
+  username: string; // Login identifier (unique)
+  name: string | null; // Display name (optional)
+  thumbnail: string | null;
+  email: string | null;
+  role: UserRole; // Combined permission level and account status
+  aggregateTrustScore: number;
+  totalViolations: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Server User types - Account on a specific media server
+export interface ServerUser {
+  id: string;
+  userId: string;
   serverId: string;
   externalId: string;
   username: string;
   email: string | null;
   thumbUrl: string | null;
-  isOwner: boolean;
-  allowGuest: boolean;
+  isServerAdmin: boolean;
   trustScore: number;
+  sessionCount: number;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export type UserRole = 'owner' | 'guest';
+// Server User with identity info - returned by /users API endpoints
+export interface ServerUserWithIdentity extends ServerUser {
+  serverName: string;
+  identityName: string | null;
+  role: UserRole; // From linked User identity
+}
+
+// Server User detail with stats - returned by GET /users/:id
+export interface ServerUserDetail extends ServerUserWithIdentity {
+  stats: {
+    totalSessions: number;
+    totalWatchTime: number;
+  };
+}
 
 export interface AuthUser {
   userId: string;
@@ -46,7 +104,7 @@ export type MediaType = 'movie' | 'episode' | 'track';
 export interface Session {
   id: string;
   serverId: string;
-  userId: string;
+  serverUserId: string;
   sessionKey: string;
   state: SessionState;
   mediaType: MediaType;
@@ -88,7 +146,7 @@ export interface Session {
 }
 
 export interface ActiveSession extends Session {
-  user: Pick<User, 'id' | 'username' | 'thumbUrl'>;
+  user: Pick<ServerUser, 'id' | 'username' | 'thumbUrl'>;
   server: Pick<Server, 'id' | 'name' | 'type'>;
 }
 
@@ -145,7 +203,7 @@ export interface Rule {
   name: string;
   type: RuleType;
   params: RuleParams;
-  userId: string | null;
+  serverUserId: string | null;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -157,7 +215,7 @@ export type ViolationSeverity = 'low' | 'warning' | 'high';
 export interface Violation {
   id: string;
   ruleId: string;
-  userId: string;
+  serverUserId: string;
   sessionId: string;
   severity: ViolationSeverity;
   data: Record<string, unknown>;
@@ -167,7 +225,7 @@ export interface Violation {
 
 export interface ViolationWithDetails extends Violation {
   rule: Pick<Rule, 'id' | 'name' | 'type'>;
-  user: Pick<User, 'id' | 'username' | 'thumbUrl'>;
+  user: Pick<ServerUser, 'id' | 'username' | 'thumbUrl'>;
 }
 
 // Stats types
@@ -184,7 +242,7 @@ export interface PlayStats {
 }
 
 export interface UserStats {
-  userId: string;
+  serverUserId: string;
   username: string;
   thumbUrl: string | null;
   playCount: number;
@@ -256,7 +314,7 @@ export interface QualityStats {
 }
 
 export interface TopUserStats {
-  userId: string;
+  serverUserId: string;
   username: string;
   thumbUrl: string | null;
   serverId: string | null;

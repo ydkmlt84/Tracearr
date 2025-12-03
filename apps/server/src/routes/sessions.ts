@@ -15,7 +15,7 @@ import {
   type ActiveSession,
 } from '@tracearr/shared';
 import { db } from '../db/client.js';
-import { sessions, users, servers } from '../db/schema.js';
+import { sessions, serverUsers, servers } from '../db/schema.js';
 
 export const sessionRoutes: FastifyPluginAsync = async (app) => {
   /**
@@ -40,7 +40,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       const {
         page = 1,
         pageSize = 50,
-        userId,
+        serverUserId,
         serverId,
         state,
         mediaType,
@@ -61,8 +61,8 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         conditions.push(sql`s.server_id = ${authUser.serverIds[0]}`);
       }
 
-      if (userId) {
-        conditions.push(sql`s.user_id = ${userId}`);
+      if (serverUserId) {
+        conditions.push(sql`s.server_user_id = ${serverUserId}`);
       }
 
       if (serverId) {
@@ -123,9 +123,9 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
           s.server_id,
           sv.name as server_name,
           sv.type as server_type,
-          s.user_id,
-          u.username,
-          u.thumb_url as user_thumb,
+          s.server_user_id,
+          su.username,
+          su.thumb_url as user_thumb,
           s.session_key,
           s.media_type,
           s.media_title,
@@ -151,7 +151,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
           s.bitrate
         FROM grouped_sessions gs
         JOIN sessions s ON s.id = gs.first_session_id
-        JOIN users u ON u.id = s.user_id
+        JOIN server_users su ON su.id = s.server_user_id
         JOIN servers sv ON sv.id = s.server_id
         ORDER BY gs.started_at DESC
       `);
@@ -170,7 +170,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         server_id: string;
         server_name: string;
         server_type: string;
-        user_id: string;
+        server_user_id: string;
         username: string;
         user_thumb: string | null;
         session_key: string;
@@ -201,7 +201,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         serverId: row.server_id,
         serverName: row.server_name,
         serverType: row.server_type,
-        userId: row.user_id,
+        serverUserId: row.server_user_id,
         username: row.username,
         userThumb: row.user_thumb,
         sessionKey: row.session_key,
@@ -330,9 +330,9 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
           serverId: sessions.serverId,
           serverName: servers.name,
           serverType: servers.type,
-          userId: sessions.userId,
-          username: users.username,
-          userThumb: users.thumbUrl,
+          serverUserId: sessions.serverUserId,
+          username: serverUsers.username,
+          userThumb: serverUsers.thumbUrl,
           sessionKey: sessions.sessionKey,
           state: sessions.state,
           mediaType: sessions.mediaType,
@@ -367,7 +367,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
           bitrate: sessions.bitrate,
         })
         .from(sessions)
-        .innerJoin(users, eq(sessions.userId, users.id))
+        .innerJoin(serverUsers, eq(sessions.serverUserId, serverUsers.id))
         .innerJoin(servers, eq(sessions.serverId, servers.id))
         .where(eq(sessions.id, id))
         .limit(1);

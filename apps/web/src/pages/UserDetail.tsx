@@ -262,7 +262,7 @@ export function UserDetail() {
               <div className="flex-1 space-y-2">
                 <div className="flex items-center gap-2">
                   <h2 className="text-xl font-semibold">{user.username}</h2>
-                  {user.isOwner && (
+                  {user.role === 'owner' && (
                     <span title="Server Owner">
                       <Crown className="h-5 w-5 text-yellow-500" />
                     </span>
@@ -273,13 +273,6 @@ export function UserDetail() {
                 )}
                 <div className="flex items-center gap-4 pt-2">
                   <TrustScoreBadge score={user.trustScore} showLabel />
-                  <span
-                    className={`text-sm ${
-                      user.allowGuest ? 'text-green-500' : 'text-muted-foreground'
-                    }`}
-                  >
-                    Guest: {user.allowGuest ? 'Allowed' : 'Disabled'}
-                  </span>
                 </div>
               </div>
             </div>

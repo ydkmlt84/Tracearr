@@ -1,15 +1,14 @@
 /**
- * Server management routes - CRUD for Plex/Jellyfin servers
+ * Server management routes - CRUD for Plex/Jellyfin/Emby servers
  */
 
 import type { FastifyPluginAsync } from 'fastify';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { createServerSchema, serverIdParamSchema } from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { servers } from '../db/schema.js';
 import { encrypt, decrypt } from '../utils/crypto.js';
-import { PlexService } from '../services/plex.js';
-import { JellyfinService } from '../services/jellyfin.js';
+import { PlexClient, JellyfinClient, EmbyClient } from '../services/mediaServer/index.js';
 import { syncServer } from '../services/sync.js';
 
 export const serverRoutes: FastifyPluginAsync = async (app) => {
@@ -23,7 +22,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const authUser = request.user;
 
-      // Get servers the user has access to
+      // Owners see all servers, guests only see their authorized servers
       const serverList = await db
         .select({
           id: servers.id,
@@ -35,9 +34,11 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         })
         .from(servers)
         .where(
-          authUser.serverIds.length > 0
-            ? eq(servers.id, authUser.serverIds[0] as string)
-            : undefined
+          authUser.role === 'owner'
+            ? undefined // Owners see all servers
+            : authUser.serverIds.length > 0
+              ? inArray(servers.id, authUser.serverIds)
+              : undefined // No serverIds = no access (will return empty)
         );
 
       return { data: serverList };
@@ -79,14 +80,19 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       // Verify the server connection
       try {
         if (type === 'plex') {
-          const isAdmin = await PlexService.verifyServerAdmin(token, url);
+          const isAdmin = await PlexClient.verifyServerAdmin(token, url);
           if (!isAdmin) {
             return reply.forbidden('Token does not have admin access to this Plex server');
           }
         } else if (type === 'jellyfin') {
-          const isAdmin = await JellyfinService.verifyServerAdmin(token, url);
+          const isAdmin = await JellyfinClient.verifyServerAdmin(token, url);
           if (!isAdmin) {
             return reply.forbidden('Token does not have admin access to this Jellyfin server');
+          }
+        } else if (type === 'emby') {
+          const isAdmin = await EmbyClient.verifyServerAdmin(token, url);
+          if (!isAdmin) {
+            return reply.forbidden('Token does not have admin access to this Emby server');
           }
         }
       } catch (error) {
@@ -277,7 +283,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
           imageUrl = `${baseUrl}/${imagePath}${separator}X-Plex-Token=${token}`;
           headers = { Accept: 'image/*' };
         } else {
-          // Jellyfin uses X-Emby-Authorization header
+          // Jellyfin and Emby use X-Emby-Authorization header
           imageUrl = `${baseUrl}/${imagePath}`;
           headers = {
             'X-Emby-Authorization': `MediaBrowser Client="Tracearr", Device="Tracearr Server", DeviceId="tracearr-server", Version="1.0.0", Token="${token}"`,

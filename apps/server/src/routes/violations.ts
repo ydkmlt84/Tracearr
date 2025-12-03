@@ -9,7 +9,7 @@ import {
   violationIdParamSchema,
 } from '@tracearr/shared';
 import { db } from '../db/client.js';
-import { violations, rules, users, sessions } from '../db/schema.js';
+import { violations, rules, serverUsers, sessions } from '../db/schema.js';
 
 export const violationRoutes: FastifyPluginAsync = async (app) => {
   /**
@@ -27,7 +27,7 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
       const {
         page = 1,
         pageSize = 50,
-        userId,
+        serverUserId,
         ruleId,
         severity,
         acknowledged,
@@ -41,8 +41,8 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
       // Build conditions
       const conditions = [];
 
-      if (userId) {
-        conditions.push(eq(violations.userId, userId));
+      if (serverUserId) {
+        conditions.push(eq(violations.serverUserId, serverUserId));
       }
 
       if (ruleId) {
@@ -74,9 +74,9 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
           ruleId: violations.ruleId,
           ruleName: rules.name,
           ruleType: rules.type,
-          userId: violations.userId,
-          username: users.username,
-          userThumb: users.thumbUrl,
+          serverUserId: violations.serverUserId,
+          username: serverUsers.username,
+          userThumb: serverUsers.thumbUrl,
           sessionId: violations.sessionId,
           mediaTitle: sessions.mediaTitle,
           severity: violations.severity,
@@ -86,7 +86,7 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
         })
         .from(violations)
         .innerJoin(rules, eq(violations.ruleId, rules.id))
-        .innerJoin(users, eq(violations.userId, users.id))
+        .innerJoin(serverUsers, eq(violations.serverUserId, serverUsers.id))
         .innerJoin(sessions, eq(violations.sessionId, sessions.id))
         .where(conditions.length > 0 ? and(...conditions) : undefined)
         .orderBy(desc(violations.createdAt))
@@ -142,9 +142,9 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
           ruleId: violations.ruleId,
           ruleName: rules.name,
           ruleType: rules.type,
-          userId: violations.userId,
-          username: users.username,
-          userThumb: users.thumbUrl,
+          serverUserId: violations.serverUserId,
+          username: serverUsers.username,
+          userThumb: serverUsers.thumbUrl,
           sessionId: violations.sessionId,
           mediaTitle: sessions.mediaTitle,
           ipAddress: sessions.ipAddress,
@@ -159,7 +159,7 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
         })
         .from(violations)
         .innerJoin(rules, eq(violations.ruleId, rules.id))
-        .innerJoin(users, eq(violations.userId, users.id))
+        .innerJoin(serverUsers, eq(violations.serverUserId, serverUsers.id))
         .innerJoin(sessions, eq(violations.sessionId, sessions.id))
         .where(eq(violations.id, id))
         .limit(1);

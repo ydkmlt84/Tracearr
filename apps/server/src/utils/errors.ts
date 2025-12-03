@@ -38,6 +38,7 @@ export const ErrorCodes = {
   PLEX_ERROR: 'EXT_001',
   JELLYFIN_ERROR: 'EXT_002',
   GEOIP_ERROR: 'EXT_003',
+  EMBY_ERROR: 'EXT_004',
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];
@@ -199,16 +200,17 @@ export class ServiceUnavailableError extends AppError {
 }
 
 /**
- * External service error (Plex, Jellyfin, etc.)
+ * External service error (Plex, Jellyfin, Emby, etc.)
  */
 export class ExternalServiceError extends AppError {
-  constructor(service: 'plex' | 'jellyfin' | 'geoip', message: string) {
-    const code =
-      service === 'plex'
-        ? ErrorCodes.PLEX_ERROR
-        : service === 'jellyfin'
-          ? ErrorCodes.JELLYFIN_ERROR
-          : ErrorCodes.GEOIP_ERROR;
+  constructor(service: 'plex' | 'jellyfin' | 'emby' | 'geoip', message: string) {
+    const codeMap: Record<typeof service, ErrorCode> = {
+      plex: ErrorCodes.PLEX_ERROR,
+      jellyfin: ErrorCodes.JELLYFIN_ERROR,
+      emby: ErrorCodes.EMBY_ERROR,
+      geoip: ErrorCodes.GEOIP_ERROR,
+    };
+    const code = codeMap[service];
     super(`${service.charAt(0).toUpperCase() + service.slice(1)} error: ${message}`, 502, code);
     this.name = 'ExternalServiceError';
     Object.setPrototypeOf(this, ExternalServiceError.prototype);

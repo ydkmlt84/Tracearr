@@ -6,6 +6,7 @@ import type {
   Session,
   Rule,
   User,
+  ServerUser,
   Violation,
   RuleType,
   RuleParams,
@@ -18,6 +19,7 @@ import type {
   ConcurrentStreamsParams,
   GeoRestrictionParams,
   AuthUser,
+  UserRole,
 } from '@tracearr/shared';
 import { RULE_DEFAULTS } from '@tracearr/shared';
 import { randomUUID } from 'node:crypto';
@@ -27,13 +29,13 @@ import { randomUUID } from 'node:crypto';
  */
 export function createMockSession(overrides: Partial<Session> = {}): Session {
   const id = overrides.id ?? randomUUID();
-  const userId = overrides.userId ?? randomUUID();
+  const serverUserId = overrides.serverUserId ?? randomUUID();
   const serverId = overrides.serverId ?? randomUUID();
 
   return {
     id,
     serverId,
-    userId,
+    serverUserId,
     sessionKey: `session_${Date.now()}_${id.slice(0, 8)}`,
     state: 'playing' as SessionState,
     mediaType: 'movie' as MediaType,
@@ -86,7 +88,7 @@ export function createMockRule<T extends RuleType>(
     name: overrides.name ?? `Test ${type.replace(/_/g, ' ')} Rule`,
     type,
     params: overrides.params ?? JSON.parse(JSON.stringify(RULE_DEFAULTS[type])) as RuleParams,
-    userId: overrides.userId ?? null, // Global rule by default
+    serverUserId: overrides.serverUserId ?? null, // Global rule by default
     isActive: overrides.isActive ?? true,
     createdAt: overrides.createdAt ?? new Date(),
     updatedAt: overrides.updatedAt ?? new Date(),
@@ -94,21 +96,42 @@ export function createMockRule<T extends RuleType>(
 }
 
 /**
- * Create a mock user
+ * Create a mock user (identity layer)
  */
-export function createMockUser(overrides: Partial<User> = {}): User {
+export function createMockUser(overrides: Partial<User> & { role?: UserRole } = {}): User {
   const id = overrides.id ?? randomUUID();
 
   return {
     id,
+    username: overrides.username ?? `testuser_${id.slice(0, 8)}`,
+    name: overrides.name ?? null,
+    thumbnail: overrides.thumbnail ?? null,
+    email: overrides.email ?? null,
+    role: overrides.role ?? 'member',
+    aggregateTrustScore: overrides.aggregateTrustScore ?? 100,
+    totalViolations: overrides.totalViolations ?? 0,
+    createdAt: overrides.createdAt ?? new Date(),
+    updatedAt: overrides.updatedAt ?? new Date(),
+  };
+}
+
+/**
+ * Create a mock server user (account on a specific media server)
+ */
+export function createMockServerUser(overrides: Partial<ServerUser> = {}): ServerUser {
+  const id = overrides.id ?? randomUUID();
+
+  return {
+    id,
+    userId: overrides.userId ?? randomUUID(),
     serverId: overrides.serverId ?? randomUUID(),
     externalId: overrides.externalId ?? `ext_${id.slice(0, 8)}`,
-    username: overrides.username ?? `testuser_${id.slice(0, 8)}`,
+    username: overrides.username ?? `serveruser_${id.slice(0, 8)}`,
     email: overrides.email ?? null,
     thumbUrl: overrides.thumbUrl ?? null,
-    isOwner: overrides.isOwner ?? false,
-    allowGuest: overrides.allowGuest ?? true,
+    isServerAdmin: overrides.isServerAdmin ?? false,
     trustScore: overrides.trustScore ?? 100,
+    sessionCount: overrides.sessionCount ?? 0,
     createdAt: overrides.createdAt ?? new Date(),
     updatedAt: overrides.updatedAt ?? new Date(),
   };
@@ -123,7 +146,7 @@ export function createMockViolation(
   return {
     id: overrides.id ?? randomUUID(),
     ruleId: overrides.ruleId ?? randomUUID(),
-    userId: overrides.userId ?? randomUUID(),
+    serverUserId: overrides.serverUserId ?? randomUUID(),
     sessionId: overrides.sessionId ?? randomUUID(),
     severity: overrides.severity ?? ('warning' as ViolationSeverity),
     data: overrides.data ?? {},
@@ -250,10 +273,10 @@ export function createSessionHoursAgo(
 }
 
 /**
- * Create multiple sessions for the same user with different IPs
+ * Create multiple sessions for the same server user with different IPs
  */
 export function createSessionsWithDifferentIps(
-  userId: string,
+  serverUserId: string,
   count: number,
   hoursSpread: number = 24
 ): Session[] {
@@ -264,7 +287,7 @@ export function createSessionsWithDifferentIps(
     const hoursAgo = (hoursSpread / count) * i;
     sessions.push(
       createMockSession({
-        userId,
+        serverUserId,
         ipAddress: `192.168.1.${100 + i}`,
         startedAt: new Date(baseTime - hoursAgo * 60 * 60 * 1000),
       })

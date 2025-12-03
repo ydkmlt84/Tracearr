@@ -50,7 +50,7 @@ export class NotificationService {
       event: NOTIFICATION_EVENTS.SESSION_STARTED,
       timestamp: new Date().toISOString(),
       data: {
-        user: { id: session.userId, username: session.user.username },
+        user: { id: session.serverUserId, username: session.user.username },
         media: { title: session.mediaTitle, type: session.mediaType },
         location: { city: session.geoCity, country: session.geoCountry },
       },
@@ -73,7 +73,7 @@ export class NotificationService {
       event: NOTIFICATION_EVENTS.SESSION_STOPPED,
       timestamp: new Date().toISOString(),
       data: {
-        user: { id: session.userId, username: session.user.username },
+        user: { id: session.serverUserId, username: session.user.username },
         media: { title: session.mediaTitle, type: session.mediaType },
         duration: session.durationMs,
       },
@@ -116,7 +116,7 @@ export class NotificationService {
       event: NOTIFICATION_EVENTS.VIOLATION_NEW,
       timestamp: violation.createdAt.toISOString(),
       data: {
-        user: { id: violation.userId, username: violation.user.username },
+        user: { id: violation.serverUserId, username: violation.user.username },
         rule: { id: violation.ruleId, type: violation.rule.type, name: violation.rule.name },
         violation: { id: violation.id, severity: violation.severity, details: violation.data },
       },

@@ -6,7 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import { z } from 'zod';
 import type { TautulliImportProgress, TautulliImportResult } from '@tracearr/shared';
 import { db } from '../db/client.js';
-import { sessions, users, settings } from '../db/schema.js';
+import { sessions, serverUsers, settings } from '../db/schema.js';
 import { refreshAggregates } from '../db/timescale.js';
 import { geoipService } from './geoip.js';
 import type { PubSubService } from './cache.js';
@@ -326,18 +326,18 @@ export class TautulliService {
     // Get user mapping (Tautulli user_id → Tracearr user_id)
     const userMap = new Map<number, string>();
 
-    // Get all Tracearr users for this server
+    // Get all Tracearr server users for this server
     const tracearrUsers = await db
       .select()
-      .from(users)
-      .where(eq(users.serverId, serverId));
+      .from(serverUsers)
+      .where(eq(serverUsers.serverId, serverId));
 
     // Map by externalId (Plex user ID)
-    for (const user of tracearrUsers) {
-      if (user.externalId) {
-        const plexUserId = parseInt(user.externalId, 10);
+    for (const serverUser of tracearrUsers) {
+      if (serverUser.externalId) {
+        const plexUserId = parseInt(serverUser.externalId, 10);
         if (!isNaN(plexUserId)) {
-          userMap.set(plexUserId, user.id);
+          userMap.set(plexUserId, serverUser.id);
         }
       }
     }
@@ -370,9 +370,9 @@ export class TautulliService {
         progress.processedRecords++;
 
         try {
-          // Find Tracearr user by Plex user ID
-          const userId = userMap.get(record.user_id);
-          if (!userId) {
+          // Find Tracearr server user by Plex user ID
+          const serverUserId = userMap.get(record.user_id);
+          if (!serverUserId) {
             // User not found in Tracearr - track for warning
             const existing = skippedUsers.get(record.user_id);
             if (existing) {
@@ -441,7 +441,7 @@ export class TautulliService {
                 .where(
                   and(
                     eq(sessions.serverId, serverId),
-                    eq(sessions.userId, userId),
+                    eq(sessions.serverUserId, serverUserId),
                     eq(sessions.ratingKey, ratingKeyStr),
                     eq(sessions.startedAt, startedAt)
                   )
@@ -486,7 +486,7 @@ export class TautulliService {
             : `tautulli-${record.reference_id}`;
           await db.insert(sessions).values({
             serverId,
-            userId,
+            serverUserId,
             sessionKey,
             // Convert rating_key to string (can be number or empty string from API)
             ratingKey: typeof record.rating_key === 'number' ? String(record.rating_key) : null,

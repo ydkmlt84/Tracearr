@@ -110,13 +110,13 @@ function createOwnerUser(): AuthUser {
 }
 
 /**
- * Create a mock guest auth user
+ * Create a mock viewer auth user (non-owner)
  */
-function createGuestUser(): AuthUser {
+function createViewerUser(): AuthUser {
   return {
     userId: randomUUID(),
-    username: 'guest',
-    role: 'guest',
+    username: 'viewer',
+    role: 'viewer',
     serverIds: [randomUUID()],
   };
 }
@@ -457,7 +457,7 @@ describe('Violation Routes', () => {
     });
 
     it('should return empty data for guests (filtered out)', async () => {
-      const guestUser = createGuestUser();
+      const guestUser = createViewerUser();
       app = await buildTestApp(guestUser);
 
       const testViolations = [
@@ -653,7 +653,7 @@ describe('Violation Routes', () => {
     });
 
     it('should reject acknowledgment for non-owner', async () => {
-      const guestUser = createGuestUser();
+      const guestUser = createViewerUser();
       app = await buildTestApp(guestUser);
 
       const response = await app.inject({
@@ -761,7 +761,7 @@ describe('Violation Routes', () => {
     });
 
     it('should reject delete for non-owner', async () => {
-      const guestUser = createGuestUser();
+      const guestUser = createViewerUser();
       app = await buildTestApp(guestUser);
 
       const response = await app.inject({
@@ -850,7 +850,7 @@ describe('Violation Routes', () => {
     });
 
     it('should filter violations for guest users', async () => {
-      const guestUser = createGuestUser();
+      const guestUser = createViewerUser();
       app = await buildTestApp(guestUser);
 
       const testViolations = [

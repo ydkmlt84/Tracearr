@@ -1,2 +1,0 @@
-CREATE INDEX "sessions_top_movies_idx" ON "sessions" USING btree ("media_type","media_title","year");--> statement-breakpoint
-CREATE INDEX "sessions_top_shows_idx" ON "sessions" USING btree ("media_type","grandparent_title");

@@ -1,1 +1,0 @@
-ALTER TABLE "sessions" ADD COLUMN "geo_region" varchar(255);

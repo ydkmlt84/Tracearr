@@ -34,13 +34,13 @@ describe('RuleEngine', () => {
     });
 
     it('should skip rules that do not apply to the user', async () => {
-      const userId = 'user-123';
-      const otherUserId = 'user-456';
-      const session = createMockSession({ userId });
+      const serverUserId = 'user-123';
+      const otherServerUserId = 'user-456';
+      const session = createMockSession({ serverUserId });
 
       // Rule applies only to a different user
       const rule = createMockRule('concurrent_streams', {
-        userId: otherUserId,
+        serverUserId: otherServerUserId,
         params: { maxStreams: 1 },
       });
 
@@ -48,13 +48,13 @@ describe('RuleEngine', () => {
       expect(results).toEqual([]);
     });
 
-    it('should apply global rules (userId = null) to all users', async () => {
-      const userId = 'user-123';
-      const session = createMockSession({ userId, state: 'playing' });
+    it('should apply global rules (serverUserId = null) to all users', async () => {
+      const serverUserId = 'user-123';
+      const session = createMockSession({ serverUserId, state: 'playing' });
 
-      // Global rule (userId = null)
+      // Global rule (serverUserId = null)
       const rule = createMockRule('concurrent_streams', {
-        userId: null,
+        serverUserId: null,
         params: { maxStreams: 0 }, // Any stream violates
       });
 
@@ -64,12 +64,12 @@ describe('RuleEngine', () => {
     });
 
     it('should apply user-specific rules to matching users', async () => {
-      const userId = 'user-123';
-      const session = createMockSession({ userId, state: 'playing' });
+      const serverUserId = 'user-123';
+      const session = createMockSession({ serverUserId, state: 'playing' });
 
       // User-specific rule
       const rule = createMockRule('concurrent_streams', {
-        userId,
+        serverUserId,
         params: { maxStreams: 0 }, // Any stream violates
       });
 
@@ -79,9 +79,9 @@ describe('RuleEngine', () => {
     });
 
     it('should return multiple violations if multiple rules trigger', async () => {
-      const userId = 'user-123';
+      const serverUserId = 'user-123';
       const session = createMockSession({
-        userId,
+        serverUserId,
         state: 'playing',
         geoCountry: 'CN',
       });
@@ -101,20 +101,20 @@ describe('RuleEngine', () => {
   });
 
   describe('impossible_travel', () => {
-    const userId = 'user-123';
+    const serverUserId = 'user-123';
 
     it('should not violate when speed is within limit', async () => {
       // NYC to LA is ~3,944 km
       // If 10 hours passed, speed = 394.4 km/h (within 500 km/h limit)
       const previousSession = createMockSession({
-        userId,
+        serverUserId,
         geoLat: TEST_LOCATIONS.newYork.lat,
         geoLon: TEST_LOCATIONS.newYork.lon,
         startedAt: new Date(Date.now() - 10 * 60 * 60 * 1000), // 10 hours ago
       });
 
       const currentSession = createMockSession({
-        userId,
+        serverUserId,
         geoLat: TEST_LOCATIONS.losAngeles.lat,
         geoLon: TEST_LOCATIONS.losAngeles.lon,
         startedAt: new Date(),
@@ -137,14 +137,14 @@ describe('RuleEngine', () => {
       // NYC to London is ~5,570 km
       // If 2 hours passed, speed = 2,785 km/h (exceeds 500 km/h limit)
       const previousSession = createMockSession({
-        userId,
+        serverUserId,
         geoLat: TEST_LOCATIONS.newYork.lat,
         geoLon: TEST_LOCATIONS.newYork.lon,
         startedAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
       });
 
       const currentSession = createMockSession({
-        userId,
+        serverUserId,
         geoLat: TEST_LOCATIONS.london.lat,
         geoLon: TEST_LOCATIONS.london.lon,
         startedAt: new Date(),
@@ -179,13 +179,13 @@ describe('RuleEngine', () => {
 
     it('should not violate when geo data is missing on current session', async () => {
       const previousSession = createMockSession({
-        userId,
+        serverUserId,
         geoLat: TEST_LOCATIONS.newYork.lat,
         geoLon: TEST_LOCATIONS.newYork.lon,
       });
 
       const currentSession = createMockSession({
-        userId,
+        serverUserId,
         geoLat: null,
         geoLon: null,
       });
@@ -205,13 +205,13 @@ describe('RuleEngine', () => {
 
     it('should not violate when geo data is missing on previous session', async () => {
       const previousSession = createMockSession({
-        userId,
+        serverUserId,
         geoLat: null,
         geoLon: null,
       });
 
       const currentSession = createMockSession({
-        userId,
+        serverUserId,
         geoLat: TEST_LOCATIONS.london.lat,
         geoLon: TEST_LOCATIONS.london.lon,
       });
@@ -232,14 +232,14 @@ describe('RuleEngine', () => {
     it('should not violate when time difference is zero or negative', async () => {
       const now = new Date();
       const previousSession = createMockSession({
-        userId,
+        serverUserId,
         geoLat: TEST_LOCATIONS.newYork.lat,
         geoLon: TEST_LOCATIONS.newYork.lon,
         startedAt: now,
       });
 
       const currentSession = createMockSession({
-        userId,
+        serverUserId,
         geoLat: TEST_LOCATIONS.london.lat,
         geoLon: TEST_LOCATIONS.london.lon,
         startedAt: now, // Same time
@@ -261,7 +261,7 @@ describe('RuleEngine', () => {
     it('should check all recent sessions and find any violation', async () => {
       // First session: Old, valid travel
       const oldSession = createMockSession({
-        userId,
+        serverUserId,
         geoLat: TEST_LOCATIONS.newYork.lat,
         geoLon: TEST_LOCATIONS.newYork.lon,
         startedAt: new Date(Date.now() - 24 * 60 * 60 * 1000), // 24 hours ago
@@ -269,7 +269,7 @@ describe('RuleEngine', () => {
 
       // Second session: Recent, impossible travel from previous
       const recentSession = createMockSession({
-        userId,
+        serverUserId,
         geoLat: TEST_LOCATIONS.losAngeles.lat,
         geoLon: TEST_LOCATIONS.losAngeles.lon,
         startedAt: new Date(Date.now() - 30 * 60 * 1000), // 30 minutes ago
@@ -277,7 +277,7 @@ describe('RuleEngine', () => {
 
       // Current session: Tokyo (impossible from LA in 30 min)
       const currentSession = createMockSession({
-        userId,
+        serverUserId,
         geoLat: TEST_LOCATIONS.tokyo.lat,
         geoLon: TEST_LOCATIONS.tokyo.lon,
         startedAt: new Date(),
@@ -311,19 +311,19 @@ describe('RuleEngine', () => {
   });
 
   describe('simultaneous_locations', () => {
-    const userId = 'user-123';
+    const serverUserId = 'user-123';
 
     it('should not violate when distance is within limit', async () => {
       // Two locations very close together (same city)
       const activeSession = createMockSession({
-        userId,
+        serverUserId,
         state: 'playing',
         geoLat: TEST_LOCATIONS.newYork.lat,
         geoLon: TEST_LOCATIONS.newYork.lon,
       });
 
       const currentSession = createMockSession({
-        userId,
+        serverUserId,
         state: 'playing',
         geoLat: TEST_LOCATIONS.newYork.lat + 0.01, // Very close
         geoLon: TEST_LOCATIONS.newYork.lon + 0.01,
@@ -345,14 +345,14 @@ describe('RuleEngine', () => {
     it('should violate when distance exceeds limit', async () => {
       // NYC to LA (~3,944 km)
       const activeSession = createMockSession({
-        userId,
+        serverUserId,
         state: 'playing',
         geoLat: TEST_LOCATIONS.newYork.lat,
         geoLon: TEST_LOCATIONS.newYork.lon,
       });
 
       const currentSession = createMockSession({
-        userId,
+        serverUserId,
         state: 'playing',
         geoLat: TEST_LOCATIONS.losAngeles.lat,
         geoLon: TEST_LOCATIONS.losAngeles.lon,
@@ -380,14 +380,14 @@ describe('RuleEngine', () => {
     it('should ignore non-playing sessions', async () => {
       // Paused session should be ignored
       const pausedSession = createMockSession({
-        userId,
+        serverUserId,
         state: 'paused',
         geoLat: TEST_LOCATIONS.london.lat,
         geoLon: TEST_LOCATIONS.london.lon,
       });
 
       const currentSession = createMockSession({
-        userId,
+        serverUserId,
         state: 'playing',
         geoLat: TEST_LOCATIONS.newYork.lat,
         geoLon: TEST_LOCATIONS.newYork.lon,
@@ -408,14 +408,14 @@ describe('RuleEngine', () => {
 
     it('should ignore stopped sessions', async () => {
       const stoppedSession = createMockSession({
-        userId,
+        serverUserId,
         state: 'stopped',
         geoLat: TEST_LOCATIONS.tokyo.lat,
         geoLon: TEST_LOCATIONS.tokyo.lon,
       });
 
       const currentSession = createMockSession({
-        userId,
+        serverUserId,
         state: 'playing',
         geoLat: TEST_LOCATIONS.newYork.lat,
         geoLon: TEST_LOCATIONS.newYork.lon,
@@ -436,14 +436,14 @@ describe('RuleEngine', () => {
 
     it('should not violate when geo data is missing', async () => {
       const activeSession = createMockSession({
-        userId,
+        serverUserId,
         state: 'playing',
         geoLat: null,
         geoLon: null,
       });
 
       const currentSession = createMockSession({
-        userId,
+        serverUserId,
         state: 'playing',
         geoLat: TEST_LOCATIONS.newYork.lat,
         geoLon: TEST_LOCATIONS.newYork.lon,
@@ -464,14 +464,14 @@ describe('RuleEngine', () => {
 
     it('should ignore sessions from different users', async () => {
       const otherUserSession = createMockSession({
-        userId: 'other-user',
+        serverUserId: 'other-user',
         state: 'playing',
         geoLat: TEST_LOCATIONS.tokyo.lat,
         geoLon: TEST_LOCATIONS.tokyo.lon,
       });
 
       const currentSession = createMockSession({
-        userId,
+        serverUserId,
         state: 'playing',
         geoLat: TEST_LOCATIONS.newYork.lat,
         geoLon: TEST_LOCATIONS.newYork.lon,
@@ -492,12 +492,12 @@ describe('RuleEngine', () => {
   });
 
   describe('device_velocity', () => {
-    const userId = 'user-123';
+    const serverUserId = 'user-123';
 
     it('should not violate when unique IPs are within limit', async () => {
-      const sessions = createSessionsWithDifferentIps(userId, 3, 24);
+      const sessions = createSessionsWithDifferentIps(serverUserId, 3, 24);
       const currentSession = createMockSession({
-        userId,
+        serverUserId,
         ipAddress: '192.168.1.200', // 4th unique IP
       });
 
@@ -515,9 +515,9 @@ describe('RuleEngine', () => {
     });
 
     it('should violate when unique IPs exceed limit', async () => {
-      const sessions = createSessionsWithDifferentIps(userId, 5, 24);
+      const sessions = createSessionsWithDifferentIps(serverUserId, 5, 24);
       const currentSession = createMockSession({
-        userId,
+        serverUserId,
         ipAddress: '192.168.1.200', // 6th unique IP
       });
 
@@ -541,9 +541,9 @@ describe('RuleEngine', () => {
 
     it('should include current session IP in count', async () => {
       // 4 unique IPs from previous sessions + 1 from current = 5 (at limit)
-      const sessions = createSessionsWithDifferentIps(userId, 4, 24);
+      const sessions = createSessionsWithDifferentIps(serverUserId, 4, 24);
       const currentSession = createMockSession({
-        userId,
+        serverUserId,
         ipAddress: '192.168.1.200', // 5th unique IP
       });
 
@@ -564,19 +564,19 @@ describe('RuleEngine', () => {
       // Sessions outside the window should be ignored
       const oldSessions = [
         createMockSession({
-          userId,
+          serverUserId,
           ipAddress: '192.168.1.1',
           startedAt: new Date(Date.now() - 48 * 60 * 60 * 1000), // 48 hours ago
         }),
         createMockSession({
-          userId,
+          serverUserId,
           ipAddress: '192.168.1.2',
           startedAt: new Date(Date.now() - 36 * 60 * 60 * 1000), // 36 hours ago
         }),
       ];
 
       const currentSession = createMockSession({
-        userId,
+        serverUserId,
         ipAddress: '192.168.1.3',
       });
 
@@ -598,19 +598,19 @@ describe('RuleEngine', () => {
       const windowHours = 24;
       const sessionsInWindow = [
         createMockSession({
-          userId,
+          serverUserId,
           ipAddress: '192.168.1.1',
           startedAt: new Date(Date.now() - 23 * 60 * 60 * 1000), // 23 hours ago (in window)
         }),
         createMockSession({
-          userId,
+          serverUserId,
           ipAddress: '192.168.1.2',
           startedAt: new Date(Date.now() - 12 * 60 * 60 * 1000), // 12 hours ago
         }),
       ];
 
       const currentSession = createMockSession({
-        userId,
+        serverUserId,
         ipAddress: '192.168.1.3', // 3rd unique IP
         startedAt: new Date(),
       });
@@ -632,13 +632,13 @@ describe('RuleEngine', () => {
     it('should not double-count duplicate IPs', async () => {
       // Multiple sessions from same IP should count as 1
       const sessions = [
-        createMockSession({ userId, ipAddress: '192.168.1.1' }),
-        createMockSession({ userId, ipAddress: '192.168.1.1' }), // Same IP
-        createMockSession({ userId, ipAddress: '192.168.1.2' }),
+        createMockSession({ serverUserId, ipAddress: '192.168.1.1' }),
+        createMockSession({ serverUserId, ipAddress: '192.168.1.1' }), // Same IP
+        createMockSession({ serverUserId, ipAddress: '192.168.1.2' }),
       ];
 
       const currentSession = createMockSession({
-        userId,
+        serverUserId,
         ipAddress: '192.168.1.1', // Same IP again
       });
 
@@ -658,15 +658,15 @@ describe('RuleEngine', () => {
   });
 
   describe('concurrent_streams', () => {
-    const userId = 'user-123';
+    const serverUserId = 'user-123';
 
     it('should not violate when streams are within limit', async () => {
       const activeSessions = [
-        createMockSession({ userId, state: 'playing' }),
-        createMockSession({ userId, state: 'playing' }),
+        createMockSession({ serverUserId, state: 'playing' }),
+        createMockSession({ serverUserId, state: 'playing' }),
       ];
 
-      const currentSession = createMockSession({ userId, state: 'playing' });
+      const currentSession = createMockSession({ serverUserId, state: 'playing' });
 
       const rule = createMockRule('concurrent_streams', {
         params: { maxStreams: 3 },
@@ -684,12 +684,12 @@ describe('RuleEngine', () => {
 
     it('should violate when streams exceed limit', async () => {
       const activeSessions = [
-        createMockSession({ userId, state: 'playing' }),
-        createMockSession({ userId, state: 'playing' }),
-        createMockSession({ userId, state: 'playing' }),
+        createMockSession({ serverUserId, state: 'playing' }),
+        createMockSession({ serverUserId, state: 'playing' }),
+        createMockSession({ serverUserId, state: 'playing' }),
       ];
 
-      const currentSession = createMockSession({ userId, state: 'playing' });
+      const currentSession = createMockSession({ serverUserId, state: 'playing' });
 
       const rule = createMockRule('concurrent_streams', {
         params: { maxStreams: 3 },
@@ -713,12 +713,12 @@ describe('RuleEngine', () => {
 
     it('should only count playing sessions', async () => {
       const sessions = [
-        createMockSession({ userId, state: 'playing' }),
-        createMockSession({ userId, state: 'paused' }), // Should not count
-        createMockSession({ userId, state: 'stopped' }), // Should not count
+        createMockSession({ serverUserId, state: 'playing' }),
+        createMockSession({ serverUserId, state: 'paused' }), // Should not count
+        createMockSession({ serverUserId, state: 'stopped' }), // Should not count
       ];
 
-      const currentSession = createMockSession({ userId, state: 'playing' });
+      const currentSession = createMockSession({ serverUserId, state: 'playing' });
 
       const rule = createMockRule('concurrent_streams', {
         params: { maxStreams: 1 },
@@ -737,7 +737,7 @@ describe('RuleEngine', () => {
 
     it('should include current session in count', async () => {
       // No existing sessions, just current
-      const currentSession = createMockSession({ userId, state: 'playing' });
+      const currentSession = createMockSession({ serverUserId, state: 'playing' });
 
       const rule = createMockRule('concurrent_streams', {
         params: { maxStreams: 0 }, // Zero tolerance
@@ -752,11 +752,11 @@ describe('RuleEngine', () => {
 
     it('should ignore sessions from different users', async () => {
       const otherUserSessions = [
-        createMockSession({ userId: 'other-user-1', state: 'playing' }),
-        createMockSession({ userId: 'other-user-2', state: 'playing' }),
+        createMockSession({ serverUserId: 'other-user-1', state: 'playing' }),
+        createMockSession({ serverUserId: 'other-user-2', state: 'playing' }),
       ];
 
-      const currentSession = createMockSession({ userId, state: 'playing' });
+      const currentSession = createMockSession({ serverUserId, state: 'playing' });
 
       const rule = createMockRule('concurrent_streams', {
         params: { maxStreams: 1 },
@@ -898,14 +898,14 @@ describe('RuleEngine', () => {
     });
 
     it('should handle session at exactly the boundary', async () => {
-      const userId = 'user-123';
+      const serverUserId = 'user-123';
 
       // Exactly at the maxStreams limit
       const activeSessions = [
-        createMockSession({ userId, state: 'playing' }),
+        createMockSession({ serverUserId, state: 'playing' }),
       ];
 
-      const currentSession = createMockSession({ userId, state: 'playing' });
+      const currentSession = createMockSession({ serverUserId, state: 'playing' });
 
       const rule = createMockRule('concurrent_streams', {
         params: { maxStreams: 2 }, // 1 + 1 = 2, exactly at limit
@@ -921,17 +921,17 @@ describe('RuleEngine', () => {
     });
 
     it('should handle very large distances correctly', async () => {
-      const userId = 'user-123';
+      const serverUserId = 'user-123';
       // Antipodal points (opposite sides of Earth)
       const previousSession = createMockSession({
-        userId,
+        serverUserId,
         geoLat: 0,
         geoLon: 0,
         startedAt: new Date(Date.now() - 1 * 60 * 60 * 1000), // 1 hour ago
       });
 
       const currentSession = createMockSession({
-        userId,
+        serverUserId,
         geoLat: 0,
         geoLon: 180, // Opposite side of Earth
         startedAt: new Date(),

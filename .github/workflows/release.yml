@@ -14,10 +14,11 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  test:
-    name: Test
+  # Run the same checks as CI
+  lint-and-typecheck:
+    name: Lint & Typecheck
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -25,8 +26,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -55,13 +54,71 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Run tests
-        run: pnpm test
+  test:
+    name: Test (${{ matrix.group }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [unit, services, routes, security]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Cache Turborepo
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-${{ hashFiles('**/pnpm-lock.yaml') }}-
+            ${{ runner.os }}-turbo-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run ${{ matrix.group }} tests
+        run: pnpm --filter @tracearr/server test:${{ matrix.group }}
+
+  # Determine if this is a prerelease (alpha, beta, rc, etc.)
+  check-release-type:
+    name: Check Release Type
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck, test]
+    outputs:
+      prerelease: ${{ steps.check.outputs.prerelease }}
+
+    steps:
+      - name: Check if prerelease
+        id: check
+        run: |
+          if [[ "${{ github.ref_name }}" == *"-"* ]]; then
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+            echo "This is a prerelease: ${{ github.ref_name }}"
+          else
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+            echo "This is a stable release: ${{ github.ref_name }}"
+          fi
 
   build-and-push:
     name: Build & Push Docker
     runs-on: ubuntu-latest
-    needs: [test]
+    needs: [check-release-type]
     permissions:
       contents: read
       packages: write
@@ -83,15 +140,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Check if prerelease
-        id: check
-        run: |
-          if [[ "${{ github.ref_name }}" == *"-"* ]]; then
-            echo "prerelease=true" >> $GITHUB_OUTPUT
-          else
-            echo "prerelease=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Extract metadata (tags, labels)
         id: meta
         uses: docker/metadata-action@v5
@@ -101,10 +149,10 @@ jobs:
             # Always: exact version
             type=semver,pattern={{version}}
             # Stable only: major.minor, major, latest
-            type=semver,pattern={{major}}.{{minor}},enable=${{ steps.check.outputs.prerelease == 'false' }}
-            type=semver,pattern={{major}},enable=${{ steps.check.outputs.prerelease == 'false' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ needs.check-release-type.outputs.prerelease == 'false' }}
+            type=semver,pattern={{major}},enable=${{ needs.check-release-type.outputs.prerelease == 'false' }}
             # Prerelease only: next tag
-            type=raw,value=next,enable=${{ steps.check.outputs.prerelease == 'true' }}
+            type=raw,value=next,enable=${{ needs.check-release-type.outputs.prerelease == 'true' }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
@@ -121,7 +169,7 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [build-and-push]
+    needs: [check-release-type, build-and-push]
     permissions:
       contents: write
 
@@ -130,15 +178,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Check if prerelease
-        id: check
-        run: |
-          if [[ "${{ github.ref_name }}" == *"-"* ]]; then
-            echo "prerelease=true" >> $GITHUB_OUTPUT
-          else
-            echo "prerelease=false" >> $GITHUB_OUTPUT
-          fi
 
       - name: Get tag annotation
         id: tag_info
@@ -153,5 +192,5 @@ jobs:
         with:
           name: ${{ github.ref_name }}
           body_path: tag_message.txt
-          prerelease: ${{ steps.check.outputs.prerelease }}
+          prerelease: ${{ needs.check-release-type.outputs.prerelease }}
           generate_release_notes: false

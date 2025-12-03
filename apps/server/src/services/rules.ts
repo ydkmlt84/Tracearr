@@ -12,7 +12,7 @@ import type {
   ConcurrentStreamsParams,
   GeoRestrictionParams,
 } from '@tracearr/shared';
-import { GEOIP_CONFIG } from '@tracearr/shared';
+import { GEOIP_CONFIG, TIME_MS } from '@tracearr/shared';
 
 export interface RuleEvaluationResult {
   violated: boolean;
@@ -32,8 +32,8 @@ export class RuleEngine {
     const results: RuleEvaluationResult[] = [];
 
     for (const rule of activeRules) {
-      // Skip rules that don't apply to this user
-      if (rule.userId !== null && rule.userId !== session.userId) {
+      // Skip rules that don't apply to this server user
+      if (rule.serverUserId !== null && rule.serverUserId !== session.serverUserId) {
         continue;
       }
 
@@ -88,10 +88,10 @@ export class RuleEngine {
     recentSessions: Session[],
     params: ImpossibleTravelParams
   ): RuleEvaluationResult {
-    // Find most recent session from same user with different location
+    // Find most recent session from same server user with different location
     const userSessions = recentSessions.filter(
       (s) =>
-        s.userId === session.userId &&
+        s.serverUserId === session.serverUserId &&
         s.geoLat !== null &&
         s.geoLon !== null &&
         session.geoLat !== null &&
@@ -136,10 +136,10 @@ export class RuleEngine {
     recentSessions: Session[],
     params: SimultaneousLocationsParams
   ): RuleEvaluationResult {
-    // Check for active sessions from same user at different locations
+    // Check for active sessions from same server user at different locations
     const activeSessions = recentSessions.filter(
       (s) =>
-        s.userId === session.userId &&
+        s.serverUserId === session.serverUserId &&
         s.state === 'playing' &&
         s.geoLat !== null &&
         s.geoLon !== null &&
@@ -179,10 +179,10 @@ export class RuleEngine {
     recentSessions: Session[],
     params: DeviceVelocityParams
   ): RuleEvaluationResult {
-    const windowStart = new Date(session.startedAt.getTime() - params.windowHours * 60 * 60 * 1000);
+    const windowStart = new Date(session.startedAt.getTime() - params.windowHours * TIME_MS.HOUR);
 
     const userSessions = recentSessions.filter(
-      (s) => s.userId === session.userId && s.startedAt >= windowStart
+      (s) => s.serverUserId === session.serverUserId && s.startedAt >= windowStart
     );
 
     const uniqueIps = new Set(userSessions.map((s) => s.ipAddress));
@@ -210,7 +210,7 @@ export class RuleEngine {
     params: ConcurrentStreamsParams
   ): RuleEvaluationResult {
     const activeSessions = recentSessions.filter(
-      (s) => s.userId === session.userId && s.state === 'playing'
+      (s) => s.serverUserId === session.serverUserId && s.state === 'playing'
     );
 
     // Add 1 for current session

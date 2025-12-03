@@ -36,7 +36,7 @@ describe('Rule Schemas', () => {
       if (result.success) {
         expect(result.data.name).toBe('Test Rule');
         expect(result.data.type).toBe('impossible_travel');
-        expect(result.data.userId).toBeNull(); // Default
+        expect(result.data.serverUserId).toBeNull(); // Default
         expect(result.data.isActive).toBe(true); // Default
       }
     });
@@ -51,39 +51,39 @@ describe('Rule Schemas', () => {
       const result = createRuleSchema.safeParse(input);
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.userId).toBeNull();
+        expect(result.data.serverUserId).toBeNull();
         expect(result.data.isActive).toBe(true);
       }
     });
 
-    it('should accept valid userId', () => {
-      const userId = randomUUID();
+    it('should accept valid serverUserId', () => {
+      const serverUserId = randomUUID();
       const input = {
         name: 'User Rule',
         type: 'geo_restriction',
         params: { blockedCountries: ['CN'] },
-        userId,
+        serverUserId,
       };
 
       const result = createRuleSchema.safeParse(input);
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.userId).toBe(userId);
+        expect(result.data.serverUserId).toBe(serverUserId);
       }
     });
 
-    it('should accept null userId for global rules', () => {
+    it('should accept null serverUserId for global rules', () => {
       const input = {
         name: 'Global Rule',
         type: 'device_velocity',
         params: { maxIps: 5, windowHours: 24 },
-        userId: null,
+        serverUserId: null,
       };
 
       const result = createRuleSchema.safeParse(input);
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.userId).toBeNull();
+        expect(result.data.serverUserId).toBeNull();
       }
     });
 
@@ -154,12 +154,12 @@ describe('Rule Schemas', () => {
       }
     });
 
-    it('should reject invalid userId format', () => {
+    it('should reject invalid serverUserId format', () => {
       const input = {
         name: 'Test Rule',
         type: 'concurrent_streams',
         params: {},
-        userId: 'not-a-uuid',
+        serverUserId: 'not-a-uuid',
       };
 
       const result = createRuleSchema.safeParse(input);
@@ -458,9 +458,9 @@ describe('Violation Schemas', () => {
       }
     });
 
-    it('should validate userId filter', () => {
-      const userId = randomUUID();
-      const result = violationQuerySchema.safeParse({ userId });
+    it('should validate serverUserId filter', () => {
+      const serverUserId = randomUUID();
+      const result = violationQuerySchema.safeParse({ serverUserId });
       expect(result.success).toBe(true);
     });
 

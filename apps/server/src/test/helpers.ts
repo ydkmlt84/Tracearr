@@ -100,12 +100,12 @@ export function createOwnerPayload(overrides?: Partial<AuthUser>): AuthUser {
   };
 }
 
-// Create a test guest user payload
-export function createGuestPayload(overrides?: Partial<AuthUser>): AuthUser {
+// Create a test viewer user payload (for testing non-owner access)
+export function createViewerPayload(overrides?: Partial<AuthUser>): AuthUser {
   return {
-    userId: 'guest-uuid-5678',
-    username: 'testguest',
-    role: 'guest',
+    userId: 'viewer-uuid-5678',
+    username: 'testviewer',
+    role: 'viewer',
     serverIds: [],
     ...overrides,
   };

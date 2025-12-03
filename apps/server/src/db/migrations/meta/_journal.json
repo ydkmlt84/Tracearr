@@ -5,78 +5,15 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1764299244888,
-      "tag": "0000_funny_ted_forrester",
+      "when": 1764697096357,
+      "tag": "0000_lying_dorian_gray",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1764299825862,
-      "tag": "0001_broken_warpath",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1764350531373,
-      "tag": "0002_public_sunfire",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1764352485915,
-      "tag": "0003_huge_enchantress",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1764353035598,
-      "tag": "0004_broken_ultimatum",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1764436503671,
-      "tag": "0005_nifty_kree",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1764459293888,
-      "tag": "0006_modern_wasp",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1764461096276,
-      "tag": "0007_spotty_black_tom",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1764476702099,
-      "tag": "0008_complete_rogue",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "7",
-      "when": 1764519252756,
-      "tag": "0009_deep_mephisto",
-      "breakpoints": true
-    },
-    {
-      "idx": 10,
-      "version": "7",
-      "when": 1764536762069,
-      "tag": "0010_glossy_stature",
+      "when": 1764705329215,
+      "tag": "0001_graceful_starjammers",
       "breakpoints": true
     },
     {

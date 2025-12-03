@@ -389,7 +389,7 @@ export function Rules() {
         type: data.type,
         params: data.params,
         isActive: data.isActive,
-        userId: null,
+        serverUserId: null,
       },
       {
         onSuccess: () => {

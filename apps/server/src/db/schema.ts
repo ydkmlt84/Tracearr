@@ -1,5 +1,11 @@
 /**
  * Drizzle ORM schema definitions for Tracearr
+ *
+ * Multi-Server User Architecture:
+ * - `users` = Identity (the real human)
+ * - `server_users` = Account on a specific server (Plex/Jellyfin/Emby)
+ * - One user can have multiple server_users (accounts across servers)
+ * - Sessions and violations link to server_users (server-specific)
  */
 
 import {
@@ -13,11 +19,12 @@ import {
   real,
   jsonb,
   index,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 // Server types enum
-export const serverTypeEnum = ['plex', 'jellyfin'] as const;
+export const serverTypeEnum = ['plex', 'jellyfin', 'emby'] as const;
 
 // Session state enum
 export const sessionStateEnum = ['playing', 'paused', 'stopped'] as const;
@@ -37,7 +44,7 @@ export const ruleTypeEnum = [
 // Violation severity enum
 export const violationSeverityEnum = ['low', 'warning', 'high'] as const;
 
-// Media servers (Plex/Jellyfin instances)
+// Media servers (Plex/Jellyfin/Emby instances)
 export const servers = pgTable('servers', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: varchar('name', { length: 100 }).notNull(),
@@ -48,35 +55,98 @@ export const servers = pgTable('servers', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-// Users from connected servers + Tracearr admins
-// Two types of users:
-// 1. Tracked users: have serverId + externalId, represent streaming users from Plex/Jellyfin
-// 2. Owner users: isOwner=true, may have passwordHash and/or plexAccountId for auth
+/**
+ * Users - Identity table representing real humans
+ *
+ * This is the "anchor" identity that can own multiple server accounts.
+ * Stores authentication credentials and aggregated metrics.
+ */
 export const users = pgTable(
   'users',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    // Nullable for owner accounts created before adding a server
-    serverId: uuid('server_id').references(() => servers.id, { onDelete: 'cascade' }),
-    // Server-specific user ID (Plex user ID or Jellyfin GUID) - null for local-only owners
-    externalId: varchar('external_id', { length: 255 }),
-    username: varchar('username', { length: 255 }).notNull(),
-    email: varchar('email', { length: 255 }),
-    thumbUrl: text('thumb_url'),
-    // Authentication fields for owner accounts
+
+    // Identity
+    username: varchar('username', { length: 100 }).notNull(), // Login identifier (unique)
+    name: varchar('name', { length: 255 }), // Display name (optional, defaults to null)
+    thumbnail: text('thumbnail'), // Custom avatar (nullable)
+    email: varchar('email', { length: 255 }), // For identity matching (nullable)
+
+    // Authentication (nullable - not all users authenticate directly)
     passwordHash: text('password_hash'), // bcrypt hash for local login
-    plexAccountId: varchar('plex_account_id', { length: 255 }), // Plex.tv global account ID for "Login with Plex"
-    isOwner: boolean('is_owner').notNull().default(false),
-    allowGuest: boolean('allow_guest').notNull().default(false),
-    trustScore: integer('trust_score').notNull().default(100),
+    plexAccountId: varchar('plex_account_id', { length: 255 }), // Plex.tv global account ID for OAuth
+
+    // Access control - combined permission level and account status
+    // Can log in: 'owner', 'admin', 'viewer'
+    // Cannot log in: 'member' (default), 'disabled', 'pending'
+    role: varchar('role', { length: 20 })
+      .notNull()
+      .$type<'owner' | 'admin' | 'viewer' | 'member' | 'disabled' | 'pending'>()
+      .default('member'),
+
+    // Aggregated metrics (cached, updated by triggers)
+    aggregateTrustScore: integer('aggregate_trust_score').notNull().default(100),
+    totalViolations: integer('total_violations').notNull().default(0),
+
+    // Timestamps
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index('users_server_id_idx').on(table.serverId),
-    index('users_external_id_idx').on(table.serverId, table.externalId),
-    index('users_plex_account_id_idx').on(table.plexAccountId),
+    // Username is display name from media server (not unique across servers)
     index('users_username_idx').on(table.username),
+    uniqueIndex('users_email_unique').on(table.email),
+    index('users_plex_account_id_idx').on(table.plexAccountId),
+    index('users_role_idx').on(table.role),
+  ]
+);
+
+/**
+ * Server Users - Account on a specific media server
+ *
+ * Represents a user's account on a Plex/Jellyfin/Emby server.
+ * One user (identity) can have multiple server_users (accounts across servers).
+ * Sessions and violations link here for per-server tracking.
+ */
+export const serverUsers = pgTable(
+  'server_users',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+
+    // Relationships - always linked to both user and server
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    serverId: uuid('server_id')
+      .notNull()
+      .references(() => servers.id, { onDelete: 'cascade' }),
+
+    // Server-specific identity
+    externalId: varchar('external_id', { length: 255 }).notNull(), // Plex/Jellyfin user ID
+    username: varchar('username', { length: 255 }).notNull(), // Username on this server
+    email: varchar('email', { length: 255 }), // Email from server sync (may differ from users.email)
+    thumbUrl: text('thumb_url'), // Avatar from server
+
+    // Server-specific permissions
+    isServerAdmin: boolean('is_server_admin').notNull().default(false),
+
+    // Per-server trust
+    trustScore: integer('trust_score').notNull().default(100),
+    sessionCount: integer('session_count').notNull().default(0), // For aggregate weighting
+
+    // Timestamps
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // One account per user per server
+    uniqueIndex('server_users_user_server_unique').on(table.userId, table.serverId),
+    // Atomic upsert during sync
+    uniqueIndex('server_users_server_external_unique').on(table.serverId, table.externalId),
+    // Query optimization
+    index('server_users_user_idx').on(table.userId),
+    index('server_users_server_idx').on(table.serverId),
+    index('server_users_username_idx').on(table.username),
   ]
 );
 
@@ -88,9 +158,10 @@ export const sessions = pgTable(
     serverId: uuid('server_id')
       .notNull()
       .references(() => servers.id, { onDelete: 'cascade' }),
-    userId: uuid('user_id')
+    // Links to server_users for per-server tracking
+    serverUserId: uuid('server_user_id')
       .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+      .references(() => serverUsers.id, { onDelete: 'cascade' }),
     sessionKey: varchar('session_key', { length: 255 }).notNull(),
     state: varchar('state', { length: 20 }).notNull().$type<(typeof sessionStateEnum)[number]>(),
     mediaType: varchar('media_type', { length: 20 })
@@ -132,13 +203,13 @@ export const sessions = pgTable(
     bitrate: integer('bitrate'),
   },
   (table) => [
-    index('sessions_user_time_idx').on(table.userId, table.startedAt),
+    index('sessions_server_user_time_idx').on(table.serverUserId, table.startedAt),
     index('sessions_server_time_idx').on(table.serverId, table.startedAt),
     index('sessions_state_idx').on(table.state),
     index('sessions_external_session_idx').on(table.serverId, table.externalSessionId),
-    index('sessions_device_idx').on(table.userId, table.deviceId),
+    index('sessions_device_idx').on(table.serverUserId, table.deviceId),
     index('sessions_reference_idx').on(table.referenceId), // For session grouping queries
-    index('sessions_user_rating_idx').on(table.userId, table.ratingKey), // For resume detection
+    index('sessions_server_user_rating_idx').on(table.serverUserId, table.ratingKey), // For resume detection
     // Indexes for stats queries
     index('sessions_geo_idx').on(table.geoLat, table.geoLon), // For /stats/locations basic geo lookup
     index('sessions_geo_time_idx').on(table.startedAt, table.geoLat, table.geoLon), // For time-filtered map queries
@@ -159,14 +230,15 @@ export const rules = pgTable(
     name: varchar('name', { length: 100 }).notNull(),
     type: varchar('type', { length: 50 }).notNull().$type<(typeof ruleTypeEnum)[number]>(),
     params: jsonb('params').notNull().$type<Record<string, unknown>>(),
-    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    // Nullable: null = global rule, set = specific server user
+    serverUserId: uuid('server_user_id').references(() => serverUsers.id, { onDelete: 'cascade' }),
     isActive: boolean('is_active').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index('rules_active_idx').on(table.isActive),
-    index('rules_user_id_idx').on(table.userId),
+    index('rules_server_user_id_idx').on(table.serverUserId),
   ]
 );
 
@@ -178,9 +250,10 @@ export const violations = pgTable(
     ruleId: uuid('rule_id')
       .notNull()
       .references(() => rules.id, { onDelete: 'cascade' }),
-    userId: uuid('user_id')
+    // Links to server_users for per-server tracking
+    serverUserId: uuid('server_user_id')
       .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+      .references(() => serverUsers.id, { onDelete: 'cascade' }),
     sessionId: uuid('session_id')
       .notNull()
       .references(() => sessions.id, { onDelete: 'cascade' }),
@@ -192,7 +265,7 @@ export const violations = pgTable(
     acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
   },
   (table) => [
-    index('violations_user_id_idx').on(table.userId),
+    index('violations_server_user_id_idx').on(table.serverUserId),
     index('violations_rule_id_idx').on(table.ruleId),
     index('violations_created_at_idx').on(table.createdAt),
   ]
@@ -249,15 +322,26 @@ export const settings = pgTable('settings', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ============================================================================
 // Relations
+// ============================================================================
+
 export const serversRelations = relations(servers, ({ many }) => ({
-  users: many(users),
+  serverUsers: many(serverUsers),
   sessions: many(sessions),
 }));
 
-export const usersRelations = relations(users, ({ one, many }) => ({
+export const usersRelations = relations(users, ({ many }) => ({
+  serverUsers: many(serverUsers),
+}));
+
+export const serverUsersRelations = relations(serverUsers, ({ one, many }) => ({
+  user: one(users, {
+    fields: [serverUsers.userId],
+    references: [users.id],
+  }),
   server: one(servers, {
-    fields: [users.serverId],
+    fields: [serverUsers.serverId],
     references: [servers.id],
   }),
   sessions: many(sessions),
@@ -270,17 +354,17 @@ export const sessionsRelations = relations(sessions, ({ one, many }) => ({
     fields: [sessions.serverId],
     references: [servers.id],
   }),
-  user: one(users, {
-    fields: [sessions.userId],
-    references: [users.id],
+  serverUser: one(serverUsers, {
+    fields: [sessions.serverUserId],
+    references: [serverUsers.id],
   }),
   violations: many(violations),
 }));
 
 export const rulesRelations = relations(rules, ({ one, many }) => ({
-  user: one(users, {
-    fields: [rules.userId],
-    references: [users.id],
+  serverUser: one(serverUsers, {
+    fields: [rules.serverUserId],
+    references: [serverUsers.id],
   }),
   violations: many(violations),
 }));
@@ -290,9 +374,9 @@ export const violationsRelations = relations(violations, ({ one }) => ({
     fields: [violations.ruleId],
     references: [rules.id],
   }),
-  user: one(users, {
-    fields: [violations.userId],
-    references: [users.id],
+  serverUser: one(serverUsers, {
+    fields: [violations.serverUserId],
+    references: [serverUsers.id],
   }),
   session: one(sessions, {
     fields: [violations.sessionId],

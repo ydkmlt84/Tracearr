@@ -11,7 +11,7 @@ import {
   createTestApp,
   generateTestToken,
   createOwnerPayload,
-  createGuestPayload,
+  createViewerPayload,
 } from '../test/helpers.js';
 import { debugRoutes } from './debug.js';
 
@@ -90,7 +90,7 @@ describe('Debug Routes Security', () => {
     it.each(debugEndpoints)(
       'should reject guest users on $method $url',
       async ({ method, url }) => {
-        const guestToken = generateTestToken(app, createGuestPayload());
+        const guestToken = generateTestToken(app, createViewerPayload());
 
         const res = await app.inject({
           method: method as any,
@@ -128,7 +128,7 @@ describe('Debug Routes Security', () => {
   describe('Privilege Escalation Prevention', () => {
     it('should not allow role manipulation to access debug routes', async () => {
       // Start with a guest token
-      const guestPayload = createGuestPayload();
+      const guestPayload = createViewerPayload();
       const guestToken = generateTestToken(app, guestPayload);
 
       // Try to manipulate the token to have owner role
@@ -151,7 +151,7 @@ describe('Debug Routes Security', () => {
     it('should not allow adding owner role to token claims', async () => {
       // Create a token with an extra claim trying to grant owner
       const payload = {
-        ...createGuestPayload(),
+        ...createViewerPayload(),
         isOwner: true, // Extra claim that shouldn't work
         admin: true,   // Another attempt
       };

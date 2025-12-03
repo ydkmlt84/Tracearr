@@ -12,7 +12,7 @@
 
 import { eq, gte, and, isNull, sql } from 'drizzle-orm';
 import { db } from './client.js';
-import { sessions, violations, users } from './schema.js';
+import { sessions, violations, users, serverUsers } from './schema.js';
 
 // ============================================================================
 // Dashboard Stats Queries
@@ -75,21 +75,21 @@ export const unacknowledgedViolationsCount = db
 // ============================================================================
 
 /**
- * Find user by server ID and external ID
- * Used for: User lookup during session polling
+ * Find server user by server ID and external ID
+ * Used for: Server user lookup during session polling
  * Called: Every poll cycle for each active session (potentially 10+ times per 15 seconds)
  */
-export const userByExternalId = db
+export const serverUserByExternalId = db
   .select()
-  .from(users)
+  .from(serverUsers)
   .where(
     and(
-      eq(users.serverId, sql.placeholder('serverId')),
-      eq(users.externalId, sql.placeholder('externalId'))
+      eq(serverUsers.serverId, sql.placeholder('serverId')),
+      eq(serverUsers.externalId, sql.placeholder('externalId'))
     )
   )
   .limit(1)
-  .prepare('user_by_external_id');
+  .prepare('server_user_by_external_id');
 
 /**
  * Find session by server ID and session key
@@ -113,16 +113,36 @@ export const sessionByServerAndKey = db
 // ============================================================================
 
 /**
- * Get user by ID with basic info
- * Used for: User details in violations, sessions
+ * Get server user by ID with basic info
+ * Used for: Server user details in violations, sessions
  * Called: Frequently for UI enrichment
+ */
+export const serverUserById = db
+  .select({
+    id: serverUsers.id,
+    userId: serverUsers.userId,
+    username: serverUsers.username,
+    thumbUrl: serverUsers.thumbUrl,
+    trustScore: serverUsers.trustScore,
+  })
+  .from(serverUsers)
+  .where(eq(serverUsers.id, sql.placeholder('id')))
+  .limit(1)
+  .prepare('server_user_by_id');
+
+/**
+ * Get user identity by ID
+ * Used for: User identity info (the real person)
+ * Called: When viewing user profile
  */
 export const userById = db
   .select({
     id: users.id,
-    username: users.username,
-    thumbUrl: users.thumbUrl,
-    trustScore: users.trustScore,
+    name: users.name,
+    thumbnail: users.thumbnail,
+    email: users.email,
+    role: users.role,
+    aggregateTrustScore: users.aggregateTrustScore,
   })
   .from(users)
   .where(eq(users.id, sql.placeholder('id')))
@@ -202,7 +222,8 @@ export const watchTimeByTypeSince = db
 export type PlaysCountResult = Awaited<ReturnType<typeof playsCountSince.execute>>;
 export type WatchTimeResult = Awaited<ReturnType<typeof watchTimeSince.execute>>;
 export type ViolationsCountResult = Awaited<ReturnType<typeof violationsCountSince.execute>>;
-export type UserByExternalIdResult = Awaited<ReturnType<typeof userByExternalId.execute>>;
+export type ServerUserByExternalIdResult = Awaited<ReturnType<typeof serverUserByExternalId.execute>>;
+export type ServerUserByIdResult = Awaited<ReturnType<typeof serverUserById.execute>>;
 export type UserByIdResult = Awaited<ReturnType<typeof userById.execute>>;
 export type SessionByIdResult = Awaited<ReturnType<typeof sessionById.execute>>;
 export type PlaysByPlatformResult = Awaited<ReturnType<typeof playsByPlatformSince.execute>>;

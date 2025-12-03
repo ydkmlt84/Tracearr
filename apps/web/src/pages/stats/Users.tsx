@@ -56,7 +56,7 @@ export function StatsUsers() {
             {/* #2 - Left */}
             {podiumUsers[1] && (
               <UserCard
-                userId={podiumUsers[1].userId}
+                userId={podiumUsers[1].serverUserId}
                 username={podiumUsers[1].username}
                 thumbUrl={podiumUsers[1].thumbUrl}
                 serverId={podiumUsers[1].serverId}
@@ -72,7 +72,7 @@ export function StatsUsers() {
             {/* #1 - Center (elevated) */}
             {podiumUsers[0] && (
               <UserCard
-                userId={podiumUsers[0].userId}
+                userId={podiumUsers[0].serverUserId}
                 username={podiumUsers[0].username}
                 thumbUrl={podiumUsers[0].thumbUrl}
                 serverId={podiumUsers[0].serverId}
@@ -88,7 +88,7 @@ export function StatsUsers() {
             {/* #3 - Right */}
             {podiumUsers[2] && (
               <UserCard
-                userId={podiumUsers[2].userId}
+                userId={podiumUsers[2].serverUserId}
                 username={podiumUsers[2].username}
                 thumbUrl={podiumUsers[2].thumbUrl}
                 serverId={podiumUsers[2].serverId}
@@ -107,8 +107,8 @@ export function StatsUsers() {
             <div className="space-y-2">
               {listUsers.map((user, index) => (
                 <UserRow
-                  key={user.userId}
-                  userId={user.userId}
+                  key={user.serverUserId}
+                  userId={user.serverUserId}
                   username={user.username}
                   thumbUrl={user.thumbUrl}
                   serverId={user.serverId}

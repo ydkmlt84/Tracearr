@@ -3,6 +3,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { Layout } from '@/components/layout/Layout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { Login } from '@/pages/Login';
+import { PlexCallback } from '@/pages/PlexCallback';
 import { Setup } from '@/pages/Setup';
 import { Dashboard } from '@/pages/Dashboard';
 import { Map } from '@/pages/Map';
@@ -21,6 +22,7 @@ export function App() {
       <Routes>
         {/* Public routes */}
         <Route path="/login" element={<Login />} />
+        <Route path="/auth/plex-callback" element={<PlexCallback />} />
         <Route path="/setup" element={<Setup />} />
 
         {/* Protected routes */}

@@ -58,7 +58,7 @@ function createTestRule(overrides: Partial<Rule> = {}): Rule {
     name: overrides.name ?? 'Test Rule',
     type: overrides.type ?? 'concurrent_streams',
     params: overrides.params ?? { maxStreams: 3 },
-    userId: overrides.userId ?? null,
+    serverUserId: overrides.serverUserId ?? null,
     isActive: overrides.isActive ?? true,
     createdAt: overrides.createdAt ?? new Date(),
     updatedAt: overrides.updatedAt ?? new Date(),
@@ -78,13 +78,13 @@ function createOwnerUser(): AuthUser {
 }
 
 /**
- * Create a mock guest auth user
+ * Create a mock viewer auth user (non-owner)
  */
-function createGuestUser(): AuthUser {
+function createViewerUser(): AuthUser {
   return {
     userId: randomUUID(),
-    username: 'guest',
-    role: 'guest',
+    username: 'viewer',
+    role: 'viewer',
     serverIds: [randomUUID()],
   };
 }
@@ -111,7 +111,7 @@ describe('Rule Routes', () => {
 
       const testRules = [
         createTestRule({ name: 'Rule 1' }),
-        createTestRule({ name: 'Rule 2', userId: randomUUID() }),
+        createTestRule({ name: 'Rule 2', serverUserId: randomUUID() }),
       ];
 
       // Mock the database chain
@@ -136,11 +136,11 @@ describe('Rule Routes', () => {
     });
 
     it('should filter user-specific rules for non-owners', async () => {
-      const guestUser = createGuestUser();
+      const guestUser = createViewerUser();
       app = await buildTestApp(guestUser);
 
-      const globalRule = createTestRule({ name: 'Global Rule', userId: null });
-      const userRule = createTestRule({ name: 'User Rule', userId: randomUUID() });
+      const globalRule = createTestRule({ name: 'Global Rule', serverUserId: null });
+      const userRule = createTestRule({ name: 'User Rule', serverUserId: randomUUID() });
 
       mockDb.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
@@ -162,7 +162,7 @@ describe('Rule Routes', () => {
       const body = JSON.parse(response.body);
       // Guest should only see global rules
       expect(body.data).toHaveLength(1);
-      expect(body.data[0].userId).toBeNull();
+      expect(body.data[0].serverUserId).toBeNull();
     });
   });
 
@@ -200,7 +200,7 @@ describe('Rule Routes', () => {
     });
 
     it('should reject rule creation for non-owner', async () => {
-      const guestUser = createGuestUser();
+      const guestUser = createViewerUser();
       app = await buildTestApp(guestUser);
 
       const response = await app.inject({
@@ -249,13 +249,13 @@ describe('Rule Routes', () => {
       expect(response.statusCode).toBe(400);
     });
 
-    it('should verify userId exists when provided', async () => {
+    it('should verify serverUserId exists when provided', async () => {
       const ownerUser = createOwnerUser();
       app = await buildTestApp(ownerUser);
 
-      const userId = randomUUID();
+      const serverUserId = randomUUID();
 
-      // User not found
+      // Server user not found
       mockDb.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
@@ -271,25 +271,25 @@ describe('Rule Routes', () => {
           name: 'User Rule',
           type: 'concurrent_streams',
           params: { maxStreams: 3 },
-          userId,
+          serverUserId,
         },
       });
 
       expect(response.statusCode).toBe(404);
     });
 
-    it('should create rule with valid userId', async () => {
+    it('should create rule with valid serverUserId', async () => {
       const ownerUser = createOwnerUser();
       app = await buildTestApp(ownerUser);
 
-      const userId = randomUUID();
-      const newRule = createTestRule({ userId });
+      const serverUserId = randomUUID();
+      const newRule = createTestRule({ serverUserId });
 
-      // User exists
+      // Server user exists
       mockDb.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
-            limit: vi.fn().mockResolvedValue([{ id: userId }]),
+            limit: vi.fn().mockResolvedValue([{ id: serverUserId }]),
           }),
         }),
       });
@@ -307,7 +307,7 @@ describe('Rule Routes', () => {
           name: 'User Rule',
           type: 'concurrent_streams',
           params: { maxStreams: 3 },
-          userId,
+          serverUserId,
         },
       });
 
@@ -428,7 +428,7 @@ describe('Rule Routes', () => {
     });
 
     it('should reject update for non-owner', async () => {
-      const guestUser = createGuestUser();
+      const guestUser = createViewerUser();
       app = await buildTestApp(guestUser);
 
       const response = await app.inject({
@@ -571,7 +571,7 @@ describe('Rule Routes', () => {
     });
 
     it('should reject delete for non-owner', async () => {
-      const guestUser = createGuestUser();
+      const guestUser = createViewerUser();
       app = await buildTestApp(guestUser);
 
       const response = await app.inject({

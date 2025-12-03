@@ -154,19 +154,17 @@ export const debugRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /**
-   * POST /debug/reset - Full factory reset (keeps owner account)
+   * POST /debug/reset - Full factory reset (deletes everything including owner)
    */
-  app.post('/reset', async (request) => {
-    const currentUser = request.user;
-
-    // Delete in order respecting FK constraints
+  app.post('/reset', async () => {
+    // Delete everything in order respecting FK constraints
     await db.delete(violations);
     await db.delete(sessions);
     await db.delete(rules);
-    await db.delete(users).where(sql`id != ${currentUser.userId}`);
+    await db.delete(users);
     await db.delete(servers);
 
-    // Reset settings to defaults (keep the row, reset values)
+    // Reset settings to defaults
     await db
       .update(settings)
       .set({
@@ -186,7 +184,7 @@ export const debugRoutes: FastifyPluginAsync = async (app) => {
 
     return {
       success: true,
-      message: 'Factory reset complete. Owner account preserved.',
+      message: 'Factory reset complete. Please set up Tracearr again.',
     };
   });
 

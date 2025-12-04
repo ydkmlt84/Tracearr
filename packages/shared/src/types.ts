@@ -365,6 +365,8 @@ export interface Settings {
   externalUrl: string | null;
   basePath: string;
   trustProxy: boolean;
+  // Mobile access
+  mobileEnabled: boolean;
 }
 
 // Tautulli import types
@@ -461,12 +463,18 @@ export interface ApiError {
 // Mobile App Types
 // ============================================
 
-// Mobile access token (for QR code pairing)
+// Mobile pairing token (one-time use)
 export interface MobileToken {
   id: string;
-  isEnabled: boolean;
+  expiresAt: Date;
   createdAt: Date;
-  rotatedAt: Date | null;
+  usedAt: Date | null;
+}
+
+// Mobile pairing token response (when generating new token)
+export interface MobilePairTokenResponse {
+  token: string;
+  expiresAt: Date;
 }
 
 // Mobile session (paired device)
@@ -483,9 +491,10 @@ export interface MobileSession {
 // Mobile config returned to web dashboard
 export interface MobileConfig {
   isEnabled: boolean;
-  token: string | null; // Only returned when enabled, null otherwise
-  serverName: string;
   sessions: MobileSession[];
+  serverName: string;
+  pendingTokens: number; // Count of unexpired, unused tokens
+  maxDevices: number; // Maximum allowed devices (5)
 }
 
 // Mobile pairing request (from mobile app)

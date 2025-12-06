@@ -331,6 +331,19 @@ class ApiClient {
         errors: string[];
         syncedAt: string;
       }>(`/servers/${id}/sync`, { method: 'POST', body: JSON.stringify({}) }),
+    statistics: (id: string) =>
+      this.request<{
+        serverId: string;
+        data: {
+          at: number;
+          timespan: number;
+          hostCpuUtilization: number;
+          processCpuUtilization: number;
+          hostMemoryUtilization: number;
+          processMemoryUtilization: number;
+        }[];
+        fetchedAt: string;
+      }>(`/servers/${id}/statistics`),
   };
 
   // Users

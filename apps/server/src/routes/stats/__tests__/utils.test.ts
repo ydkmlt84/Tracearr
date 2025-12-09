@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getDateRange } from '../utils.js';
+import { getDateRange, resetCachedState } from '../utils.js';
 
 describe('getDateRange', () => {
   beforeEach(() => {
@@ -76,5 +76,19 @@ describe('getDateRange', () => {
       const diffMs = now.getTime() - result.getTime();
       expect(diffMs).toBe(365 * 24 * 60 * 60 * 1000); // 365 days in ms
     });
+  });
+});
+
+describe('resetCachedState', () => {
+  it('should reset cached state without error', () => {
+    // This function resets internal cache variables - just verify it runs
+    expect(() => resetCachedState()).not.toThrow();
+  });
+
+  it('should be callable multiple times', () => {
+    // Should be safe to call multiple times
+    resetCachedState();
+    resetCachedState();
+    expect(() => resetCachedState()).not.toThrow();
   });
 });

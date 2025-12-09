@@ -322,6 +322,16 @@ describe('parseFirstArrayElement', () => {
     expect(parseFirstArrayElement(media, 'bitrate', 0)).toBe(0);
   });
 
+  it('should return default when first element is null', () => {
+    const media = [null, { bitrate: 8000000 }];
+    expect(parseFirstArrayElement(media, 'bitrate', 0)).toBe(0);
+  });
+
+  it('should return default when first element is not an object', () => {
+    const media = ['string', { bitrate: 8000000 }];
+    expect(parseFirstArrayElement(media, 'bitrate', 0)).toBe(0);
+  });
+
   // Real Plex pattern: (item.Media as Record<string, unknown>[])?.[0]?.bitrate
   it('should handle Plex Media array pattern', () => {
     const item = {

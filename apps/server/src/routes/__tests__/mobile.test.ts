@@ -963,6 +963,245 @@ describe('Mobile Routes', () => {
       const body = response.json();
       expect(body.message).toBe('This pairing token has already been used');
     });
+
+    it('returns error when no owner account exists', async () => {
+      app = await buildTestApp(null);
+
+      mockRedis.eval.mockResolvedValue(1); // Rate limit OK
+
+      // Mock db.select() outside transaction:
+      // Call 1: count sessions (db.select().from())
+      // Call 2: existing session check (db.select().from().where().limit())
+      let selectCallCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCallCount++;
+        if (selectCallCount === 1) {
+          // Sessions count - returns { count: 0 }
+          return {
+            from: vi.fn().mockResolvedValue([{ count: 0 }]),
+          } as never;
+        } else {
+          // Existing session check - no existing session
+          return {
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue([]),
+              }),
+            }),
+          } as never;
+        }
+      });
+
+      // Mock transaction that returns NO_OWNER error
+      vi.mocked(db.transaction).mockImplementation(async (callback) => {
+        let txSelectCallCount = 0;
+        const tx = {
+          execute: vi.fn().mockResolvedValue(undefined),
+          select: vi.fn().mockImplementation(() => {
+            txSelectCallCount++;
+            if (txSelectCallCount === 1) {
+              // Token lookup - valid token
+              return {
+                from: vi.fn().mockReturnValue({
+                  where: vi.fn().mockReturnValue({
+                    for: vi.fn().mockReturnValue({
+                      limit: vi.fn().mockResolvedValue([createMockToken()]),
+                    }),
+                  }),
+                }),
+              };
+            } else if (txSelectCallCount === 2) {
+              // Owner lookup - no owner found
+              return {
+                from: vi.fn().mockReturnValue({
+                  where: vi.fn().mockReturnValue({
+                    limit: vi.fn().mockResolvedValue([]),
+                  }),
+                }),
+              };
+            }
+            return { from: vi.fn().mockResolvedValue([]) };
+          }),
+        };
+        return callback(tx as never);
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/mobile/pair',
+        payload: validPairPayload,
+      });
+
+      expect(response.statusCode).toBe(500);
+      const body = response.json();
+      expect(body.message).toBe('No owner account found');
+    });
+
+    it('returns error when token is invalid', async () => {
+      app = await buildTestApp(null);
+
+      mockRedis.eval.mockResolvedValue(1); // Rate limit OK
+
+      // Mock db.select() outside transaction
+      let selectCallCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCallCount++;
+        if (selectCallCount === 1) {
+          return { from: vi.fn().mockResolvedValue([{ count: 0 }]) } as never;
+        } else {
+          return {
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue([]),
+              }),
+            }),
+          } as never;
+        }
+      });
+
+      // Mock transaction that throws INVALID_TOKEN error (no token found)
+      vi.mocked(db.transaction).mockImplementation(async (callback) => {
+        const tx = {
+          execute: vi.fn().mockResolvedValue(undefined),
+          select: vi.fn().mockImplementation(() => {
+            // Token lookup returns empty array
+            return {
+              from: vi.fn().mockReturnValue({
+                where: vi.fn().mockReturnValue({
+                  for: vi.fn().mockReturnValue({
+                    limit: vi.fn().mockResolvedValue([]),
+                  }),
+                }),
+              }),
+            };
+          }),
+        };
+        return callback(tx as never);
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/mobile/pair',
+        payload: validPairPayload,
+      });
+
+      expect(response.statusCode).toBe(401);
+      const body = response.json();
+      expect(body.message).toBe('Invalid mobile token');
+    });
+
+    it('returns generic error for unexpected transaction failures', async () => {
+      app = await buildTestApp(null);
+
+      mockRedis.eval.mockResolvedValue(1); // Rate limit OK
+
+      // Mock db.select() outside transaction
+      let selectCallCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCallCount++;
+        if (selectCallCount === 1) {
+          return { from: vi.fn().mockResolvedValue([{ count: 0 }]) } as never;
+        } else {
+          return {
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue([]),
+              }),
+            }),
+          } as never;
+        }
+      });
+
+      // Mock transaction that throws an unexpected error
+      vi.mocked(db.transaction).mockRejectedValue(new Error('Database connection lost'));
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/mobile/pair',
+        payload: validPairPayload,
+      });
+
+      expect(response.statusCode).toBe(500);
+      const body = response.json();
+      expect(body.message).toBe('Pairing failed. Please try again.');
+    });
+
+    it('cleans up old refresh token when updating existing session', async () => {
+      app = await buildTestApp(null);
+
+      mockRedis.eval.mockResolvedValue(1); // Rate limit OK
+
+      const existingSessionId = randomUUID();
+      const oldRefreshHash = 'old-refresh-token-hash-1234567890';
+
+      // First select: device count
+      // Second select: existing session check
+      let selectCallCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCallCount++;
+        if (selectCallCount === 1) {
+          return { from: vi.fn().mockResolvedValue([{ count: 1 }]) } as never;
+        }
+        // Existing session found
+        return {
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([{
+                id: existingSessionId,
+                refreshTokenHash: oldRefreshHash,
+                deviceName: 'Old Device',
+                platform: 'ios',
+              }]),
+            }),
+          }),
+        } as never;
+      });
+
+      const mockOwner = { id: randomUUID(), username: 'owner', role: 'owner' };
+      const mockServerId = randomUUID();
+      vi.mocked(db.transaction).mockImplementation(async (callback) => {
+        let txSelectCallCount = 0;
+        const tx = {
+          execute: vi.fn().mockResolvedValue(undefined),
+          select: vi.fn().mockImplementation(() => {
+            txSelectCallCount++;
+            if (txSelectCallCount === 3) {
+              return { from: vi.fn().mockResolvedValue([{ id: mockServerId, name: 'Server', type: 'plex' }]) };
+            }
+            return {
+              from: vi.fn().mockReturnValue({
+                where: vi.fn().mockReturnValue({
+                  for: vi.fn().mockReturnValue({
+                    limit: vi.fn().mockResolvedValue([createMockToken()]),
+                  }),
+                  limit: vi.fn().mockResolvedValue([mockOwner]),
+                }),
+              }),
+            };
+          }),
+          update: vi.fn().mockReturnValue({
+            set: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue(undefined),
+            }),
+          }),
+        };
+        return callback(tx as never);
+      });
+
+      mockJwt.sign.mockReturnValue('mock.jwt.token');
+      mockRedis.setex.mockResolvedValue('OK');
+      mockRedis.del.mockResolvedValue(1);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/mobile/pair',
+        payload: validPairPayload,
+      });
+
+      expect(response.statusCode).toBe(200);
+      // Verify old refresh token was deleted from Redis
+      expect(mockRedis.del).toHaveBeenCalledWith(`tracearr:mobile_refresh:${oldRefreshHash}`);
+    });
   });
 
   describe('POST /mobile/refresh', () => {

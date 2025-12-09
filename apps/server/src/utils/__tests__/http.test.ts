@@ -29,6 +29,7 @@ import {
   jsonHeaders,
   plexHeaders,
   jellyfinHeaders,
+  embyHeaders,
 } from '../http.js';
 
 // Mock fetch globally
@@ -405,6 +406,21 @@ describe('Header helpers', () => {
       const headers = jellyfinHeaders('jellyfin-api-key');
 
       expect(headers['X-Emby-Token']).toBe('jellyfin-api-key');
+    });
+  });
+
+  describe('embyHeaders', () => {
+    it('should return Emby headers without API key', () => {
+      const headers = embyHeaders();
+
+      expect(headers['Accept']).toBe('application/json');
+      expect(headers['X-Emby-Token']).toBeUndefined();
+    });
+
+    it('should include X-Emby-Token when API key provided', () => {
+      const headers = embyHeaders('emby-api-key');
+
+      expect(headers['X-Emby-Token']).toBe('emby-api-key');
     });
   });
 });

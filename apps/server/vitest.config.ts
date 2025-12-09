@@ -33,7 +33,22 @@ export default mergeConfig(
           'src/jobs/**/*.ts',
           'src/utils/**/*.ts',
         ],
-        exclude: ['**/*.test.ts', '**/test/**'],
+        exclude: [
+          '**/*.test.ts',
+          '**/test/**',
+          // Type-only files with no executable code
+          '**/types.ts',
+          // Index files that only register routes (no business logic)
+          '**/routes/**/index.ts',
+          '**/routes/auth/index.ts',
+          '**/routes/stats/index.ts',
+          '**/routes/users/index.ts',
+          // HTTP client wrappers tested via integration tests
+          '**/services/mediaServer/plex/client.ts',
+          '**/services/mediaServer/plex/eventSource.ts',
+          '**/services/mediaServer/jellyfin/client.ts',
+          '**/services/mediaServer/emby/client.ts',
+        ],
         thresholds: {
           statements: 40,
           branches: 40,

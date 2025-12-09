@@ -15,6 +15,9 @@
  * - POST /mobile/pair - Exchange pairing token for JWT
  * - POST /mobile/refresh - Refresh mobile JWT
  * - POST /mobile/push-token - Register push token
+ *
+ * Stream management (admin/owner via mobile):
+ * - POST /mobile/streams/:id/terminate - Terminate a playback session
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -34,9 +37,15 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
-// Import mocked db and routes
+// Mock the termination service
+vi.mock('../../services/termination.js', () => ({
+  terminateSession: vi.fn(),
+}));
+
+// Import mocked db, routes, and termination service
 import { db } from '../../db/client.js';
 import { mobileRoutes } from '../mobile.js';
+import { terminateSession } from '../../services/termination.js';
 
 // Mock Redis
 const mockRedis = {
@@ -127,6 +136,34 @@ function createViewerUser(): AuthUser {
 }
 
 /**
+ * Create a mock mobile admin user (with deviceId)
+ */
+function createMobileAdminUser(serverId?: string): AuthUser {
+  return {
+    userId: randomUUID(),
+    username: 'admin',
+    role: 'admin',
+    serverIds: serverId ? [serverId] : [randomUUID()],
+    mobile: true,
+    deviceId: 'device-admin-123',
+  };
+}
+
+/**
+ * Create a mock mobile viewer user (with deviceId)
+ */
+function createMobileViewerUser(serverId?: string): AuthUser {
+  return {
+    userId: randomUUID(),
+    username: 'viewer',
+    role: 'viewer',
+    serverIds: serverId ? [serverId] : [randomUUID()],
+    mobile: true,
+    deviceId: 'device-viewer-123',
+  };
+}
+
+/**
  * Create a mock mobile session
  */
 function createMockSession(overrides?: Partial<{
@@ -188,6 +225,7 @@ describe('Mobile Routes', () => {
     vi.mocked(db.update).mockReset();
     vi.mocked(db.delete).mockReset();
     vi.mocked(db.transaction).mockReset();
+    vi.mocked(terminateSession).mockReset();
     mockRedis.get.mockReset();
     mockRedis.set.mockReset();
     mockRedis.setex.mockReset();
@@ -1501,6 +1539,294 @@ describe('Mobile Routes', () => {
       expect(response.statusCode).toBe(404);
       const body = response.json();
       expect(body.message).toContain('No mobile session found');
+    });
+  });
+
+  // ============================================================================
+  // Stream Termination Tests
+  // ============================================================================
+
+  describe('POST /mobile/streams/:id/terminate', () => {
+    const serverId = randomUUID();
+    const sessionId = randomUUID();
+
+    it('successfully terminates a session as owner', async () => {
+      const ownerMobileUser = {
+        ...createMobileUser(),
+        serverIds: [serverId],
+      };
+      app = await buildTestApp(ownerMobileUser);
+
+      // Mock session lookup
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([
+              {
+                id: sessionId,
+                serverId,
+                serverUserId: randomUUID(),
+                state: 'playing',
+              },
+            ]),
+          }),
+        }),
+      } as never);
+
+      // Mock termination service success
+      vi.mocked(terminateSession).mockResolvedValue({
+        success: true,
+        terminationLogId: randomUUID(),
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: `/mobile/streams/${sessionId}/terminate`,
+        payload: {
+          reason: 'Testing termination',
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.success).toBe(true);
+      expect(body.terminationLogId).toBeDefined();
+      expect(body.message).toBe('Stream termination command sent successfully');
+
+      // Verify terminateSession was called with correct args
+      expect(terminateSession).toHaveBeenCalledWith({
+        sessionId,
+        trigger: 'manual',
+        triggeredByUserId: ownerMobileUser.userId,
+        reason: 'Testing termination',
+      });
+    });
+
+    it('successfully terminates a session as admin', async () => {
+      const adminMobileUser = createMobileAdminUser(serverId);
+      app = await buildTestApp(adminMobileUser);
+
+      // Mock session lookup
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([
+              {
+                id: sessionId,
+                serverId,
+                serverUserId: randomUUID(),
+                state: 'playing',
+              },
+            ]),
+          }),
+        }),
+      } as never);
+
+      // Mock termination service success
+      vi.mocked(terminateSession).mockResolvedValue({
+        success: true,
+        terminationLogId: randomUUID(),
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: `/mobile/streams/${sessionId}/terminate`,
+        payload: {},
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.success).toBe(true);
+    });
+
+    it('returns 403 for viewer trying to terminate', async () => {
+      const viewerMobileUser = createMobileViewerUser(serverId);
+      app = await buildTestApp(viewerMobileUser);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: `/mobile/streams/${sessionId}/terminate`,
+        payload: {},
+      });
+
+      expect(response.statusCode).toBe(403);
+      const body = response.json();
+      expect(body.message).toContain('Only administrators can terminate');
+    });
+
+    it('returns 404 when session not found', async () => {
+      const ownerMobileUser = {
+        ...createMobileUser(),
+        serverIds: [serverId],
+      };
+      app = await buildTestApp(ownerMobileUser);
+
+      // Mock session lookup - no session found
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([]),
+          }),
+        }),
+      } as never);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: `/mobile/streams/${sessionId}/terminate`,
+        payload: {},
+      });
+
+      expect(response.statusCode).toBe(404);
+      const body = response.json();
+      expect(body.message).toContain('Session not found');
+    });
+
+    it('returns 403 when user lacks server access', async () => {
+      const otherServerId = randomUUID();
+      // Use admin user (not owner) so server access is checked
+      const adminMobileUser = createMobileAdminUser(otherServerId); // User has access to a different server
+      app = await buildTestApp(adminMobileUser);
+
+      // Mock session lookup - session exists but on different server
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([
+              {
+                id: sessionId,
+                serverId, // Session is on serverId, user has access to otherServerId
+                serverUserId: randomUUID(),
+                state: 'playing',
+              },
+            ]),
+          }),
+        }),
+      } as never);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: `/mobile/streams/${sessionId}/terminate`,
+        payload: {},
+      });
+
+      expect(response.statusCode).toBe(403);
+      const body = response.json();
+      expect(body.message).toContain('do not have access to this server');
+    });
+
+    it('returns 409 when session already stopped', async () => {
+      const ownerMobileUser = {
+        ...createMobileUser(),
+        serverIds: [serverId],
+      };
+      app = await buildTestApp(ownerMobileUser);
+
+      // Mock session lookup - session already stopped
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([
+              {
+                id: sessionId,
+                serverId,
+                serverUserId: randomUUID(),
+                state: 'stopped',
+              },
+            ]),
+          }),
+        }),
+      } as never);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: `/mobile/streams/${sessionId}/terminate`,
+        payload: {},
+      });
+
+      expect(response.statusCode).toBe(409);
+      const body = response.json();
+      expect(body.message).toContain('already ended');
+    });
+
+    it('returns 500 when termination service fails', async () => {
+      const ownerMobileUser = {
+        ...createMobileUser(),
+        serverIds: [serverId],
+      };
+      app = await buildTestApp(ownerMobileUser);
+
+      // Mock session lookup
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([
+              {
+                id: sessionId,
+                serverId,
+                serverUserId: randomUUID(),
+                state: 'playing',
+              },
+            ]),
+          }),
+        }),
+      } as never);
+
+      // Mock termination service failure
+      vi.mocked(terminateSession).mockResolvedValue({
+        success: false,
+        terminationLogId: randomUUID(),
+        error: 'Media server connection failed',
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: `/mobile/streams/${sessionId}/terminate`,
+        payload: {},
+      });
+
+      expect(response.statusCode).toBe(500);
+      const body = response.json();
+      expect(body.success).toBe(false);
+      expect(body.error).toBe('Media server connection failed');
+      expect(body.terminationLogId).toBeDefined();
+    });
+
+    it('returns 400 for invalid session ID format', async () => {
+      const ownerMobileUser = {
+        ...createMobileUser(),
+        serverIds: [serverId],
+      };
+      app = await buildTestApp(ownerMobileUser);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/mobile/streams/not-a-uuid/terminate',
+        payload: {},
+      });
+
+      expect(response.statusCode).toBe(400);
+      const body = response.json();
+      expect(body.message).toContain('Invalid session ID');
+    });
+
+    it('returns 400 for reason exceeding max length', async () => {
+      const ownerMobileUser = {
+        ...createMobileUser(),
+        serverIds: [serverId],
+      };
+      app = await buildTestApp(ownerMobileUser);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: `/mobile/streams/${sessionId}/terminate`,
+        payload: {
+          reason: 'a'.repeat(501), // Exceeds 500 char limit
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      const body = response.json();
+      expect(body.message).toContain('Invalid request body');
     });
   });
 });

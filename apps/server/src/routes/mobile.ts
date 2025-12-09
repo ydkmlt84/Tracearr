@@ -13,6 +13,9 @@
  * - POST /mobile/pair - Exchange pairing token for JWT
  * - POST /mobile/refresh - Refresh mobile JWT
  * - POST /mobile/push-token - Register push token
+ *
+ * Stream management (admin/owner via mobile):
+ * - POST /mobile/streams/:id/terminate - Terminate a playback session
  */
 
 import type { FastifyPluginAsync } from 'fastify';
@@ -20,9 +23,11 @@ import { createHash, randomBytes } from 'crypto';
 import { eq, and, gt, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { MobileConfig, MobileSession, MobilePairResponse, MobilePairTokenResponse } from '@tracearr/shared';
-import { REDIS_KEYS, CACHE_TTL } from '@tracearr/shared';
+import { REDIS_KEYS, CACHE_TTL, sessionIdParamSchema, terminateSessionBodySchema } from '@tracearr/shared';
 import { db } from '../db/client.js';
-import { mobileTokens, mobileSessions, servers, users, settings } from '../db/schema.js';
+import { mobileTokens, mobileSessions, servers, users, settings, sessions } from '../db/schema.js';
+import { terminateSession } from '../services/termination.js';
+import { hasServerAccess } from '../utils/serverFiltering.js';
 
 // Rate limits for mobile auth endpoints
 const MOBILE_PAIR_MAX_ATTEMPTS = 5; // 5 attempts per 15 minutes
@@ -796,4 +801,96 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
 
     return { success: true, updatedSessions: updated.length };
   });
+
+  // ============================================================================
+  // Stream Management Endpoints (admin/owner via mobile)
+  // ============================================================================
+
+  /**
+   * POST /mobile/streams/:id/terminate - Terminate a playback session
+   *
+   * Requires mobile authentication with admin/owner role.
+   * Sends a stop command to the media server and logs the termination.
+   */
+  app.post(
+    '/streams/:id/terminate',
+    { preHandler: [app.requireMobile] },
+    async (request, reply) => {
+      const params = sessionIdParamSchema.safeParse(request.params);
+      if (!params.success) {
+        return reply.badRequest('Invalid session ID');
+      }
+
+      const body = terminateSessionBodySchema.safeParse(request.body);
+      if (!body.success) {
+        return reply.badRequest('Invalid request body');
+      }
+
+      const { id } = params.data;
+      const { reason } = body.data;
+      const authUser = request.user;
+
+      // Only admins and owners can terminate sessions
+      if (authUser.role !== 'owner' && authUser.role !== 'admin') {
+        return reply.forbidden('Only administrators can terminate sessions');
+      }
+
+      // Verify the session exists and user has access to its server
+      const session = await db
+        .select({
+          id: sessions.id,
+          serverId: sessions.serverId,
+          serverUserId: sessions.serverUserId,
+          state: sessions.state,
+        })
+        .from(sessions)
+        .where(eq(sessions.id, id))
+        .limit(1);
+
+      const sessionData = session[0];
+      if (!sessionData) {
+        return reply.notFound('Session not found');
+      }
+
+      if (!hasServerAccess(authUser, sessionData.serverId)) {
+        return reply.forbidden('You do not have access to this server');
+      }
+
+      // Check if session is already stopped
+      if (sessionData.state === 'stopped') {
+        return reply.conflict('Session has already ended');
+      }
+
+      // Attempt termination
+      const result = await terminateSession({
+        sessionId: id,
+        trigger: 'manual',
+        triggeredByUserId: authUser.userId,
+        reason,
+      });
+
+      if (!result.success) {
+        app.log.error(
+          { sessionId: id, error: result.error, terminationLogId: result.terminationLogId },
+          'Failed to terminate session from mobile'
+        );
+        return reply.code(500).send({
+          success: false,
+          error: result.error,
+          terminationLogId: result.terminationLogId,
+        });
+      }
+
+      app.log.info(
+        { sessionId: id, userId: authUser.userId, deviceId: authUser.deviceId },
+        'Session terminated from mobile app'
+      );
+
+      return {
+        success: true,
+        terminationLogId: result.terminationLogId,
+        message: 'Stream termination command sent successfully',
+      };
+    }
+  );
 };

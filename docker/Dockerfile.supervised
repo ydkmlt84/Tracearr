@@ -38,6 +38,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     lsb-release \
     supervisor \
     gosu \
+    openssl \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 22
@@ -63,10 +65,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     redis-server \
     && rm -rf /var/lib/apt/lists/*
 
-# Configure TimescaleDB
-RUN echo "shared_preload_libraries = 'timescaledb'" >> /etc/postgresql/15/main/postgresql.conf \
-    && echo "listen_addresses = '127.0.0.1'" >> /etc/postgresql/15/main/postgresql.conf \
-    && echo "port = 5432" >> /etc/postgresql/15/main/postgresql.conf
+# Note: PostgreSQL config is applied during initdb in entrypoint-supervised.sh
+# The /etc/postgresql/15/main/ config is not used since we use a custom data directory
 
 # Configure Redis to listen only on localhost
 RUN sed -i 's/^bind .*/bind 127.0.0.1/' /etc/redis/redis.conf \
@@ -92,10 +92,15 @@ COPY data/GeoLite2-City.mmdb ./data/GeoLite2-City.mmdb
 # Install production dependencies
 RUN pnpm install --prod --frozen-lockfile
 
-# Create data directories
-RUN mkdir -p /data/postgres /data/redis /data/tracearr \
+# Create tracearr user for running the application (non-root)
+RUN groupadd --system --gid 1001 tracearr \
+    && useradd --system --uid 1001 --gid tracearr --shell /bin/false tracearr
+
+# Create data directories with proper ownership
+RUN mkdir -p /data/postgres /data/redis /data/tracearr /var/log/supervisor \
     && chown -R postgres:postgres /data/postgres \
-    && chown -R redis:redis /data/redis
+    && chown -R redis:redis /data/redis \
+    && chown -R tracearr:tracearr /data/tracearr /app
 
 # Supervisord configuration
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
@@ -109,6 +114,7 @@ ENV NODE_ENV=production \
     LOG_LEVEL=info \
     PORT=3000 \
     HOST=0.0.0.0 \
+    TZ=UTC \
     DATABASE_URL=postgresql://tracearr:tracearr@127.0.0.1:5432/tracearr \
     REDIS_URL=redis://127.0.0.1:6379
 

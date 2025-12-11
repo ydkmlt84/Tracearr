@@ -8,7 +8,20 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { sessions, violations, users, servers, rules, settings } from '../db/schema.js';
+import {
+  sessions,
+  violations,
+  users,
+  servers,
+  serverUsers,
+  rules,
+  settings,
+  mobileTokens,
+  mobileSessions,
+  notificationPreferences,
+  notificationChannelRouting,
+  terminationLogs,
+} from '../db/schema.js';
 
 export const debugRoutes: FastifyPluginAsync = async (app) => {
   // All debug routes require owner
@@ -161,9 +174,16 @@ export const debugRoutes: FastifyPluginAsync = async (app) => {
    */
   app.post('/reset', async () => {
     // Delete everything in order respecting FK constraints
+    // Start with tables that have FK dependencies on other tables
     await db.delete(violations);
+    await db.delete(terminationLogs);
     await db.delete(sessions);
     await db.delete(rules);
+    await db.delete(notificationChannelRouting);
+    await db.delete(notificationPreferences);
+    await db.delete(mobileSessions);
+    await db.delete(mobileTokens);
+    await db.delete(serverUsers);
     await db.delete(users);
     await db.delete(servers);
 

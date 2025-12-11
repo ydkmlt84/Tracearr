@@ -285,6 +285,28 @@ async function processServerSessions(
       const isNew = !cachedSessionKeys.has(sessionKey);
 
       if (isNew) {
+        // RACE CONDITION CHECK: Verify no active session exists with this sessionKey
+        // This can happen when SSE and poller both try to create a session simultaneously
+        const existingWithSameKey = await db
+          .select({ id: sessions.id })
+          .from(sessions)
+          .where(
+            and(
+              eq(sessions.serverId, server.id),
+              eq(sessions.sessionKey, processed.sessionKey),
+              isNull(sessions.stoppedAt)
+            )
+          )
+          .limit(1);
+
+        if (existingWithSameKey.length > 0) {
+          // Session already exists (likely created by SSE), skip insert
+          // Add to cache so we don't check again next poll
+          cachedSessionKeys.add(sessionKey);
+          console.log(`[Poller] Active session already exists for ${processed.sessionKey}, skipping create`);
+          continue;
+        }
+
         // Check for session grouping - find recent unfinished session with same serverUser+ratingKey
         let referenceId: string | null = null;
 
@@ -559,12 +581,16 @@ async function processServerSessions(
           // Violations are already persisted in DB, broadcast failure is non-fatal
         }
       } else {
-        // Get existing session to check for state changes
+        // Get existing ACTIVE session to check for state changes
         const existingRows = await db
           .select()
           .from(sessions)
           .where(
-            and(eq(sessions.serverId, server.id), eq(sessions.sessionKey, processed.sessionKey))
+            and(
+              eq(sessions.serverId, server.id),
+              eq(sessions.sessionKey, processed.sessionKey),
+              isNull(sessions.stoppedAt)
+            )
           )
           .limit(1);
 

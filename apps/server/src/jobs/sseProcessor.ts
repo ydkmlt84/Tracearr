@@ -164,6 +164,7 @@ async function handleStopped(event: {
   const { serverId, notification } = event;
 
   try {
+    // Query without limit to handle any duplicate sessions that may exist
     const existingRows = await db
       .select()
       .from(sessions)
@@ -173,14 +174,16 @@ async function handleStopped(event: {
           eq(sessions.sessionKey, notification.sessionKey),
           isNull(sessions.stoppedAt)
         )
-      )
-      .limit(1);
+      );
 
-    if (!existingRows[0]) {
+    if (existingRows.length === 0) {
       return;
     }
 
-    await stopSession(existingRows[0]);
+    // Stop all matching sessions (handles potential duplicates)
+    for (const session of existingRows) {
+      await stopSession(session);
+    }
   } catch (error) {
     console.error('[SSEProcessor] Error handling stopped event:', error);
   }
@@ -338,6 +341,27 @@ async function createNewSession(
 
   // GeoIP lookup
   const geo = geoipService.lookup(processed.ipAddress);
+
+  // Check if an active session already exists (prevents race condition with poller)
+  // This can happen when SSE and poller both try to create a session simultaneously
+  const existingActiveSession = await db
+    .select()
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.serverId, serverId),
+        eq(sessions.sessionKey, processed.sessionKey),
+        isNull(sessions.stoppedAt)
+      )
+    )
+    .limit(1);
+
+  if (existingActiveSession.length > 0) {
+    // Session already exists (likely created by poller), skip insert
+    // The existing session will be updated by subsequent SSE events
+    console.log(`[SSEProcessor] Active session already exists for ${processed.sessionKey}, skipping create`);
+    return;
+  }
 
   // Insert new session
   const insertedRows = await db

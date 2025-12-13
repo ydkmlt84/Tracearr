@@ -17,6 +17,8 @@ services:
       - COOKIE_SECRET=${COOKIE_SECRET:?COOKIE_SECRET is required}
       - CORS_ORIGIN=${CORS_ORIGIN:-*}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      # Uncomment for TestFlight/beta testing: allows reusable tokens, no expiry, unlimited devices
+      # - MOBILE_BETA_MODE=true
     depends_on:
       timescale:
         condition: service_healthy

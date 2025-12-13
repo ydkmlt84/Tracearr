@@ -186,20 +186,28 @@ jobs:
             echo "This is a stable release: $TAG"
           fi
 
-  build-and-push:
-    name: Build & Push Docker
-    runs-on: ubuntu-latest
+  # Build each platform natively in parallel (much faster than QEMU emulation)
+  build-docker:
+    name: Build Docker (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
     needs: [check-release-type]
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -211,46 +219,113 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels)
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=docker-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.arch }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-docker-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Merge platform-specific images into multi-arch manifest
+  merge-docker:
+    name: Merge Docker Manifest
+    runs-on: ubuntu-latest
+    needs: [check-release-type, build-docker]
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-docker-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # Always: exact version
             type=semver,pattern={{version}}
-            # Stable only: major.minor, major, latest
             type=semver,pattern={{major}}.{{minor}},enable=${{ needs.check-release-type.outputs.prerelease == 'false' }}
             type=semver,pattern={{major}},enable=${{ needs.check-release-type.outputs.prerelease == 'false' }}
-            # Prerelease only: next tag
             type=raw,value=next,enable=${{ needs.check-release-type.outputs.prerelease == 'true' }}
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./docker/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          if [ -z "$(ls -A .)" ]; then
+            echo "Error: No digests found!"
+            exit 1
+          fi
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
 
-  build-and-push-supervised:
-    name: Build & Push Supervised Image
-    runs-on: ubuntu-latest
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+
+  # Build supervised image on each platform
+  build-supervised:
+    name: Build Supervised (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
     needs: [check-release-type]
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -262,35 +337,94 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata for supervised image
-        id: meta-supervised
+      - name: Extract metadata
+        id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            # Always: supervised-version
-            type=semver,pattern=supervised-{{version}}
-            # Stable only: supervised (latest supervised)
-            type=raw,value=supervised,enable=${{ needs.check-release-type.outputs.prerelease == 'false' }}
-            # Prerelease only: supervised-next
-            type=raw,value=supervised-next,enable=${{ needs.check-release-type.outputs.prerelease == 'true' }}
 
-      - name: Build and push supervised image
+      - name: Build and push by digest
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./docker/Dockerfile.supervised
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta-supervised.outputs.tags }}
-          labels: ${{ steps.meta-supervised.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=supervised-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=supervised-${{ matrix.arch }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-supervised-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Merge supervised multi-arch manifest
+  merge-supervised:
+    name: Merge Supervised Manifest
+    runs-on: ubuntu-latest
+    needs: [check-release-type, build-supervised]
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-supervised-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern=supervised-{{version}}
+            type=raw,value=supervised,enable=${{ needs.check-release-type.outputs.prerelease == 'false' }}
+            type=raw,value=supervised-next,enable=${{ needs.check-release-type.outputs.prerelease == 'true' }}
+
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          if [ -z "$(ls -A .)" ]; then
+            echo "Error: No digests found!"
+            exit 1
+          fi
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
+
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:supervised-${{ steps.meta.outputs.version }}
 
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [check-release-type, build-and-push, build-and-push-supervised]
+    needs: [check-release-type, merge-docker, merge-supervised]
     permissions:
       contents: write
 

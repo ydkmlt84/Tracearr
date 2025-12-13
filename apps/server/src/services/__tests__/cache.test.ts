@@ -25,7 +25,7 @@ import {
   type PubSubService,
 } from '../cache.js';
 
-// Mock Redis instance factory
+// Mock Redis instance factory with pipeline support
 function createMockRedis(): Redis & {
   store: Map<string, string>;
   sets: Map<string, Set<string>>;
@@ -35,6 +35,81 @@ function createMockRedis(): Redis & {
   const sets = new Map<string, Set<string>>();
   const ttls = new Map<string, number>();
   const messageCallbacks: Array<(channel: string, message: string) => void> = [];
+
+  // Pipeline mock - accumulates commands and executes them atomically
+  const createPipeline = () => {
+    const commands: Array<{ cmd: string; args: unknown[] }> = [];
+
+    const pipeline = {
+      sadd: (key: string, ...members: string[]) => {
+        commands.push({ cmd: 'sadd', args: [key, ...members] });
+        return pipeline;
+      },
+      srem: (key: string, ...members: string[]) => {
+        commands.push({ cmd: 'srem', args: [key, ...members] });
+        return pipeline;
+      },
+      setex: (key: string, seconds: number, value: string) => {
+        commands.push({ cmd: 'setex', args: [key, seconds, value] });
+        return pipeline;
+      },
+      del: (...keys: string[]) => {
+        commands.push({ cmd: 'del', args: keys });
+        return pipeline;
+      },
+      expire: (key: string, seconds: number) => {
+        commands.push({ cmd: 'expire', args: [key, seconds] });
+        return pipeline;
+      },
+      exec: vi.fn(async () => {
+        const results: Array<[null, unknown]> = [];
+        for (const { cmd, args } of commands) {
+          let result: unknown = 'OK';
+          if (cmd === 'sadd') {
+            const [key, ...members] = args as [string, ...string[]];
+            if (!sets.has(key)) sets.set(key, new Set());
+            const set = sets.get(key)!;
+            let added = 0;
+            for (const member of members) {
+              if (!set.has(member)) {
+                set.add(member);
+                added++;
+              }
+            }
+            result = added;
+          } else if (cmd === 'srem') {
+            const [key, ...members] = args as [string, ...string[]];
+            const set = sets.get(key);
+            let removed = 0;
+            if (set) {
+              for (const member of members) {
+                if (set.delete(member)) removed++;
+              }
+            }
+            result = removed;
+          } else if (cmd === 'setex') {
+            const [key, seconds, value] = args as [string, number, string];
+            store.set(key, value);
+            ttls.set(key, seconds);
+            result = 'OK';
+          } else if (cmd === 'del') {
+            let count = 0;
+            for (const key of args as string[]) {
+              if (store.delete(key) || sets.delete(key)) count++;
+            }
+            result = count;
+          } else if (cmd === 'expire') {
+            const [key, seconds] = args as [string, number];
+            ttls.set(key, seconds);
+            result = store.has(key) || sets.has(key) ? 1 : 0;
+          }
+          results.push([null, result]);
+        }
+        return results;
+      }),
+    };
+    return pipeline;
+  };
 
   return {
     store,
@@ -57,6 +132,12 @@ function createMockRedis(): Redis & {
     keys: vi.fn(async (pattern: string) => {
       const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
       return Array.from(store.keys()).filter((k) => regex.test(k));
+    }),
+    mget: vi.fn(async (...keys: string[]) => {
+      return keys.map((key) => store.get(key) ?? null);
+    }),
+    exists: vi.fn(async (key: string) => {
+      return store.has(key) ? 1 : 0;
     }),
 
     // Set operations
@@ -89,6 +170,9 @@ function createMockRedis(): Redis & {
       ttls.set(key, seconds);
       return store.has(key) || sets.has(key) ? 1 : 0;
     }),
+
+    // Pipeline/transaction support
+    multi: vi.fn(() => createPipeline()),
 
     // Pub/Sub
     publish: vi.fn(async () => 1),
@@ -134,6 +218,51 @@ const sampleSession = {
   quality: '1080p',
   ipAddress: '192.168.1.100',
 };
+
+// Sample ActiveSession for atomic method tests (matches actual ActiveSession type)
+function createTestActiveSession(id: string, serverId = 'server-1'): any {
+  return {
+    id,
+    sessionKey: `session-key-${id}`,
+    serverId,
+    serverUserId: 'user-123',
+    state: 'playing',
+    mediaType: 'movie',
+    mediaTitle: 'Test Movie',
+    grandparentTitle: null,
+    seasonNumber: null,
+    episodeNumber: null,
+    year: 2024,
+    thumbPath: '/library/metadata/123/thumb',
+    ratingKey: 'media-123',
+    externalSessionId: null,
+    startedAt: new Date(),
+    stoppedAt: null,
+    durationMs: 0,
+    progressMs: 0,
+    totalDurationMs: 7200000,
+    lastPausedAt: null,
+    pausedDurationMs: 0,
+    referenceId: null,
+    watched: false,
+    ipAddress: '192.168.1.100',
+    geoCity: 'New York',
+    geoRegion: 'NY',
+    geoCountry: 'US',
+    geoLat: 40.7128,
+    geoLon: -74.006,
+    playerName: 'Chrome',
+    deviceId: 'device-123',
+    product: 'Plex Web',
+    device: 'Chrome',
+    platform: 'Chrome',
+    quality: '1080p',
+    isTranscode: false,
+    bitrate: 20000,
+    user: { id: 'user-123', username: 'testuser', thumbUrl: null },
+    server: { id: serverId, name: 'Test Server', type: 'plex' },
+  };
+}
 
 const sampleStats = {
   activeSessions: 5,
@@ -355,6 +484,309 @@ describe('CacheService', () => {
       const result = await cache.ping();
 
       expect(result).toBe(false);
+    });
+  });
+
+  // ============================================================================
+  // Atomic SET-based Session Operations (Race Condition Fix)
+  // These tests verify the atomic operations that fix duplicate session bugs
+  // ============================================================================
+
+  describe('addActiveSession (atomic)', () => {
+    it('should add session to SET and store session data atomically', async () => {
+      const session = createTestActiveSession('session-1');
+
+      await cache.addActiveSession(session);
+
+      // Verify session ID was added to SET
+      const ids = await redis.smembers('tracearr:sessions:active:ids');
+      expect(ids).toContain('session-1');
+
+      // Verify session data was stored
+      const storedData = redis.store.get('tracearr:sessions:session-1');
+      expect(storedData).toBeDefined();
+      expect(JSON.parse(storedData!).id).toBe('session-1');
+    });
+
+    it('should invalidate dashboard stats atomically', async () => {
+      const session = createTestActiveSession('session-1');
+
+      await cache.addActiveSession(session);
+
+      // Dashboard stats should be deleted as part of the pipeline
+      expect(redis.store.has('tracearr:stats:dashboard')).toBe(false);
+    });
+
+    it('should use Redis pipeline for atomicity', async () => {
+      const session = createTestActiveSession('session-1');
+
+      await cache.addActiveSession(session);
+
+      // Verify multi() was called for pipeline
+      expect(redis.multi).toHaveBeenCalled();
+    });
+
+    it('should not create duplicates when called twice with same session', async () => {
+      const session = createTestActiveSession('session-1');
+
+      await cache.addActiveSession(session);
+      await cache.addActiveSession(session);
+
+      // SET should only have one entry (SADD is idempotent)
+      const ids = await redis.smembers('tracearr:sessions:active:ids');
+      expect(ids).toHaveLength(1);
+    });
+  });
+
+  describe('removeActiveSession (atomic)', () => {
+    it('should remove session from SET and delete session data atomically', async () => {
+      const session = createTestActiveSession('session-1');
+
+      // First add a session
+      await cache.addActiveSession(session);
+
+      // Verify it exists
+      let ids = await redis.smembers('tracearr:sessions:active:ids');
+      expect(ids).toContain('session-1');
+
+      // Now remove it
+      await cache.removeActiveSession('session-1');
+
+      // Verify it's gone from SET
+      ids = await redis.smembers('tracearr:sessions:active:ids');
+      expect(ids).not.toContain('session-1');
+
+      // Verify session data is deleted
+      expect(redis.store.has('tracearr:sessions:session-1')).toBe(false);
+    });
+
+    it('should invalidate dashboard stats atomically', async () => {
+      const session = createTestActiveSession('session-1');
+      await cache.addActiveSession(session);
+
+      // Set some dashboard stats
+      redis.store.set('tracearr:stats:dashboard', JSON.stringify({ activeStreams: 1 }));
+
+      await cache.removeActiveSession('session-1');
+
+      // Dashboard stats should be deleted
+      expect(redis.store.has('tracearr:stats:dashboard')).toBe(false);
+    });
+
+    it('should handle removing non-existent session gracefully', async () => {
+      // Should not throw
+      await expect(cache.removeActiveSession('non-existent')).resolves.not.toThrow();
+    });
+  });
+
+  describe('getAllActiveSessions', () => {
+    it('should return empty array when no sessions exist', async () => {
+      const result = await cache.getAllActiveSessions();
+
+      expect(result).toEqual([]);
+    });
+
+    it('should return all active sessions', async () => {
+      const session1 = createTestActiveSession('session-1');
+      const session2 = createTestActiveSession('session-2');
+
+      await cache.addActiveSession(session1);
+      await cache.addActiveSession(session2);
+
+      const result = await cache.getAllActiveSessions();
+
+      expect(result).toHaveLength(2);
+      expect(result.map((s: any) => s.id).sort()).toEqual(['session-1', 'session-2']);
+    });
+
+    it('should clean up stale IDs (IDs without session data)', async () => {
+      // Manually add a stale ID to the SET (no corresponding data)
+      redis.sets.set('tracearr:sessions:active:ids', new Set(['stale-id', 'valid-id']));
+      redis.store.set(
+        'tracearr:sessions:valid-id',
+        JSON.stringify(createTestActiveSession('valid-id'))
+      );
+
+      const result = await cache.getAllActiveSessions();
+
+      // Should only return the valid session
+      expect(result).toHaveLength(1);
+      expect(result[0]!.id).toBe('valid-id');
+
+      // Stale ID should have been cleaned up
+      const ids = await redis.smembers('tracearr:sessions:active:ids');
+      expect(ids).not.toContain('stale-id');
+    });
+  });
+
+  describe('updateActiveSession', () => {
+    it('should update session data without modifying SET membership', async () => {
+      const session = createTestActiveSession('session-1');
+      await cache.addActiveSession(session);
+
+      // Update the session
+      const updatedSession = { ...session, progressMs: 50000 };
+      await cache.updateActiveSession(updatedSession);
+
+      // Verify data was updated
+      const storedData = redis.store.get('tracearr:sessions:session-1');
+      expect(JSON.parse(storedData!).progressMs).toBe(50000);
+
+      // Verify SET still contains the ID
+      const ids = await redis.smembers('tracearr:sessions:active:ids');
+      expect(ids).toContain('session-1');
+    });
+  });
+
+  describe('syncActiveSessions (full replacement)', () => {
+    it('should replace all sessions atomically', async () => {
+      // Add some initial sessions
+      await cache.addActiveSession(createTestActiveSession('old-1'));
+      await cache.addActiveSession(createTestActiveSession('old-2'));
+
+      // Sync with new sessions
+      const newSessions = [
+        createTestActiveSession('new-1'),
+        createTestActiveSession('new-2'),
+        createTestActiveSession('new-3'),
+      ];
+      await cache.syncActiveSessions(newSessions);
+
+      const result = await cache.getAllActiveSessions();
+
+      // Should only have new sessions
+      expect(result).toHaveLength(3);
+      const ids = result.map((s: any) => s.id).sort();
+      expect(ids).toEqual(['new-1', 'new-2', 'new-3']);
+    });
+
+    it('should handle empty sync (clear all sessions)', async () => {
+      await cache.addActiveSession(createTestActiveSession('session-1'));
+
+      await cache.syncActiveSessions([]);
+
+      const result = await cache.getAllActiveSessions();
+      expect(result).toHaveLength(0);
+    });
+  });
+
+  describe('incrementalSyncActiveSessions', () => {
+    it('should add new sessions without affecting existing', async () => {
+      await cache.addActiveSession(createTestActiveSession('existing-1'));
+
+      await cache.incrementalSyncActiveSessions(
+        [createTestActiveSession('new-1')], // new
+        [], // stopped
+        [] // updated
+      );
+
+      const result = await cache.getAllActiveSessions();
+      expect(result).toHaveLength(2);
+    });
+
+    it('should remove stopped sessions', async () => {
+      await cache.addActiveSession(createTestActiveSession('session-1'));
+      await cache.addActiveSession(createTestActiveSession('session-2'));
+
+      await cache.incrementalSyncActiveSessions(
+        [], // new
+        ['session-1'], // stopped
+        [] // updated
+      );
+
+      const result = await cache.getAllActiveSessions();
+      expect(result).toHaveLength(1);
+      expect(result[0]!.id).toBe('session-2');
+    });
+
+    it('should update existing sessions', async () => {
+      const session = createTestActiveSession('session-1');
+      await cache.addActiveSession(session);
+
+      const updated = { ...session, progressMs: 99999 };
+      await cache.incrementalSyncActiveSessions(
+        [], // new
+        [], // stopped
+        [updated] // updated
+      );
+
+      const result = await cache.getAllActiveSessions();
+      expect(result[0]!.progressMs).toBe(99999);
+    });
+
+    it('should handle mixed operations atomically', async () => {
+      await cache.addActiveSession(createTestActiveSession('keep'));
+      await cache.addActiveSession(createTestActiveSession('remove'));
+
+      const newSession = createTestActiveSession('add');
+      const updatedSession = { ...createTestActiveSession('keep'), progressMs: 12345 };
+
+      await cache.incrementalSyncActiveSessions(
+        [newSession], // new
+        ['remove'], // stopped
+        [updatedSession] // updated
+      );
+
+      const result = await cache.getAllActiveSessions();
+      expect(result).toHaveLength(2);
+
+      const kept = result.find((s: any) => s.id === 'keep');
+      expect(kept!.progressMs).toBe(12345);
+
+      const added = result.find((s: any) => s.id === 'add');
+      expect(added).toBeDefined();
+
+      const removed = result.find((s: any) => s.id === 'remove');
+      expect(removed).toBeUndefined();
+    });
+
+    it('should not fail when no changes', async () => {
+      await expect(
+        cache.incrementalSyncActiveSessions([], [], [])
+      ).resolves.not.toThrow();
+    });
+  });
+
+  describe('concurrent operations (race condition fix verification)', () => {
+    it('should handle concurrent add and remove on different sessions', async () => {
+      // This test verifies the fix for the original race condition
+      // Previously: read-modify-write would cause one operation to overwrite the other
+      // Now: SADD/SREM are atomic and don't interfere
+
+      // Add initial sessions
+      await cache.addActiveSession(createTestActiveSession('session-1'));
+      await cache.addActiveSession(createTestActiveSession('session-2'));
+
+      // Simulate concurrent operations (in real code these could interleave)
+      await Promise.all([
+        cache.addActiveSession(createTestActiveSession('session-3')),
+        cache.removeActiveSession('session-1'),
+      ]);
+
+      const result = await cache.getAllActiveSessions();
+      const ids = result.map((s: any) => s.id).sort();
+
+      // session-1 should be removed
+      // session-2 should remain
+      // session-3 should be added
+      expect(ids).toEqual(['session-2', 'session-3']);
+    });
+
+    it('should handle concurrent removes on different sessions', async () => {
+      // Add sessions
+      await cache.addActiveSession(createTestActiveSession('session-1'));
+      await cache.addActiveSession(createTestActiveSession('session-2'));
+      await cache.addActiveSession(createTestActiveSession('session-3'));
+
+      // Concurrent removes
+      await Promise.all([
+        cache.removeActiveSession('session-1'),
+        cache.removeActiveSession('session-2'),
+      ]);
+
+      const result = await cache.getAllActiveSessions();
+      expect(result).toHaveLength(1);
+      expect(result[0]!.id).toBe('session-3');
     });
   });
 });

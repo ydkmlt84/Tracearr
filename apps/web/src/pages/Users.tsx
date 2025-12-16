@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
+import { Input } from '@/components/ui/input';
 import { TrustScoreBadge } from '@/components/users/TrustScoreBadge';
 import { getAvatarUrl } from '@/components/users/utils';
 import { Skeleton } from '@/components/ui/skeleton';
-import { User as UserIcon, Crown, Clock } from 'lucide-react';
+import { User as UserIcon, Crown, Clock, Search } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { ServerUserWithIdentity } from '@tracearr/shared';
@@ -68,8 +69,9 @@ const userColumns: ColumnDef<ServerUserWithIdentity>[] = [
 
 export function Users() {
   const navigate = useNavigate();
+  const [searchFilter, setSearchFilter] = useState('');
   const [page, setPage] = useState(1);
-  const pageSize = 20;
+  const pageSize = 100;
   const { selectedServerId } = useServer();
 
   const { data, isLoading } = useUsers({ page, pageSize, serverId: selectedServerId ?? undefined });
@@ -82,16 +84,24 @@ export function Users() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Users</h1>
-        <p className="text-sm text-muted-foreground">
-          {total} user{total !== 1 ? 's' : ''} total
-        </p>
+        <div className="flex items-center gap-4">
+          <div className="relative w-64">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search users..."
+              value={searchFilter}
+              onChange={(e) => setSearchFilter(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {total} user{total !== 1 ? 's' : ''}
+          </p>
+        </div>
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>All Users</CardTitle>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           {isLoading ? (
             <div className="space-y-4">
               {[...Array(5)].map((_, i) => (
@@ -112,7 +122,8 @@ export function Users() {
               pageCount={totalPages}
               page={page}
               onPageChange={setPage}
-              isLoading={isLoading}
+              filterColumn="username"
+              filterValue={searchFilter}
               onRowClick={(user) => { void navigate(`/users/${user.id}`); }}
               emptyMessage="No users found."
             />

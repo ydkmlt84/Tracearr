@@ -111,10 +111,10 @@ export function Dashboard() {
       {/* Now Playing Section */}
       <section>
         <div className="mb-4 flex items-center gap-2">
-          <Tv className="h-5 w-5 text-primary" />
+          <Tv className="h-5 w-5 text-muted-foreground" />
           <h2 className="text-lg font-semibold">Now Playing</h2>
           {hasActiveStreams && (
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
               {activeCount} {activeCount === 1 ? 'stream' : 'streams'}
             </span>
           )}

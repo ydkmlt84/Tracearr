@@ -97,9 +97,10 @@ docker compose -f docker/docker-compose.yml up -d
 |-----|-------------|
 | `latest` | Stable release (requires external DB/Redis) |
 | `supervised` | All-in-one stable release |
-| `next` | Latest prerelease |
+| `next` | Latest prerelease (requires external DB/Redis) |
+| `supervised-next` | All-in-one prerelease |
+| `nightly` | Bleeding edge nightly (requires external DB/Redis) |
 | `supervised-nightly` | All-in-one nightly build |
-| `nightly` | Bleeding edge nightly |
 
 ```bash
 # All-in-one (easiest)

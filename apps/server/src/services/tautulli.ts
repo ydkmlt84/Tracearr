@@ -19,6 +19,8 @@ const RETRY_DELAY_MS = 1000; // Base delay, will be multiplied by attempt number
 // Helper for fields that can be number or empty string (Tautulli API inconsistency)
 // Exported for testing
 export const numberOrEmptyString = z.union([z.number(), z.literal('')]);
+// Helper for fields that can be number, empty string, or null (movies have null parent/grandparent keys)
+export const numberOrEmptyStringOrNull = z.union([z.number(), z.literal(''), z.null()]);
 
 // Zod schemas for runtime validation of Tautulli API responses
 // Based on actual API response from http://192.168.1.32:8181
@@ -59,13 +61,13 @@ export const TautulliHistoryRecordSchema = z.object({
   // Media info
   media_type: z.string(),
   rating_key: z.coerce.number(), // Coerce handles string/number inconsistency
-  // These CAN be empty string for movies, number for episodes
-  parent_rating_key: numberOrEmptyString,
-  grandparent_rating_key: numberOrEmptyString,
+  // These CAN be empty string, number, or null depending on media type
+  parent_rating_key: numberOrEmptyStringOrNull,
+  grandparent_rating_key: numberOrEmptyStringOrNull,
   full_title: z.string(),
   title: z.string(),
   parent_title: z.string(),
-  grandparent_title: z.string(),
+  grandparent_title: z.string().nullable(),
   original_title: z.string().nullable(),
   // year: number for movies, empty string "" for episodes
   year: numberOrEmptyString,

@@ -175,7 +175,11 @@ export function HistoryFiltersBar({
   const handleTimeRangeChange = useCallback(
     (newTimeRange: TimeRangeValue) => {
       const dateFilters = timeRangeToDateFilters(newTimeRange);
-      onFiltersChange({ ...filters, ...dateFilters });
+      onFiltersChange({
+        ...filters,
+        startDate: dateFilters.startDate,
+        endDate: dateFilters.endDate,
+      });
     },
     [filters, onFiltersChange]
   );

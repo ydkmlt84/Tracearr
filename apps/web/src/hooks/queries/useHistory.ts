@@ -60,13 +60,15 @@ export function useHistorySessions(filters: HistoryFilters = {}, pageSize = 50) 
  * Used to populate filter dropdowns.
  * Accepts optional date range to match the current history filter.
  */
-export function useFilterOptions(params?: {
-  serverId?: string;
-  startDate?: Date;
-  endDate?: Date;
-}) {
+export function useFilterOptions(params?: { serverId?: string; startDate?: Date; endDate?: Date }) {
   return useQuery({
-    queryKey: ['sessions', 'filter-options', params?.serverId, params?.startDate?.toISOString(), params?.endDate?.toISOString()],
+    queryKey: [
+      'sessions',
+      'filter-options',
+      params?.serverId,
+      params?.startDate?.toISOString(),
+      params?.endDate?.toISOString(),
+    ],
     queryFn: () => api.sessions.filterOptions(params),
     staleTime: 1000 * 60 * 5, // 5 minutes - filter options don't change often
   });

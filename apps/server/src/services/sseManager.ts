@@ -93,10 +93,12 @@ export class SSEManager extends EventEmitter {
 
     console.log(`[SSEManager] Starting SSE for ${allServers.length} Plex server(s)`);
 
-    // Create SSE connections for each Plex server
-    for (const server of allServers) {
-      await this.addServer(server.id, server.name, server.type as 'plex', server.url, server.token);
-    }
+    // Create SSE connections for each Plex server in parallel
+    await Promise.all(
+      allServers.map((server) =>
+        this.addServer(server.id, server.name, server.type as 'plex', server.url, server.token)
+      )
+    );
 
     // Start reconciliation timer
     this.startReconciliation();

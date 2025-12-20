@@ -428,6 +428,9 @@ async function processServerSessions(
             });
             newSessions.push(activeSession);
 
+            // Mark as cached within this poll cycle to prevent duplicate processing
+            cachedSessionKeys.add(sessionKey);
+
             // Broadcast violations for new session
             try {
               await broadcastViolations(violationResults, insertedSession.id, pubSubService);

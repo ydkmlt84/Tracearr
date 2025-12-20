@@ -220,6 +220,7 @@ export const sessions = pgTable(
     index('sessions_server_time_idx').on(table.serverId, table.startedAt),
     index('sessions_state_idx').on(table.state),
     index('sessions_external_session_idx').on(table.serverId, table.externalSessionId),
+    index('sessions_active_lookup_idx').on(table.serverId, table.sessionKey, table.stoppedAt),
     index('sessions_device_idx').on(table.serverUserId, table.deviceId),
     index('sessions_reference_idx').on(table.referenceId), // For session grouping queries
     index('sessions_server_user_rating_idx').on(table.serverUserId, table.ratingKey), // For resume detection

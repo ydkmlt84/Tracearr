@@ -1,0 +1,1 @@
+CREATE INDEX "sessions_active_lookup_idx" ON "sessions" USING btree ("server_id","session_key","stopped_at");

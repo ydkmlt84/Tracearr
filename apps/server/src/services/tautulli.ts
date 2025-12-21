@@ -21,6 +21,7 @@ import {
   type SessionUpdate,
   createSimpleProgressPublisher,
 } from './import/index.js';
+import { normalizePlatformName } from '../utils/platformNormalizer.js';
 
 const PAGE_SIZE = 5000; // Larger batches = fewer API calls (tested up to 10k, scales linearly)
 const REQUEST_TIMEOUT_MS = 30000; // 30 seconds
@@ -622,7 +623,7 @@ export class TautulliService {
             playerName: record.player || record.product,
             deviceId: record.machine_id || null,
             product: record.product || null,
-            platform: record.platform,
+            platform: normalizePlatformName(record.platform),
             quality: record.transcode_decision === 'transcode' ? 'Transcode' : 'Direct',
             isTranscode: record.transcode_decision === 'transcode',
             videoDecision:

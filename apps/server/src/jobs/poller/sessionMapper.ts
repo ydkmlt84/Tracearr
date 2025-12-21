@@ -9,7 +9,7 @@
 import type { Session } from '@tracearr/shared';
 import type { MediaSession } from '../../services/mediaServer/types.js';
 import type { ProcessedSession } from './types.js';
-import { parseJellyfinClient } from './utils.js';
+import { normalizeClient } from '../../utils/platformNormalizer.js';
 import type { sessions } from '../../db/schema.js';
 
 // ============================================================================
@@ -121,14 +121,13 @@ export function mapMediaSession(
   // Keep the IP address - GeoIP service handles private IPs correctly
   const ipAddress = session.network.ipAddress;
 
-  // Get platform/device - Jellyfin and Emby may need client string parsing
-  let platform = session.player.platform ?? '';
-  let device = session.player.device ?? '';
-  if ((serverType === 'jellyfin' || serverType === 'emby') && session.player.product) {
-    const parsed = parseJellyfinClient(session.player.product, device);
-    platform = platform || parsed.platform;
-    device = device || parsed.device;
-  }
+  // Normalize platform/device for all server types
+  // Uses product/client name as primary source, with platform/device as fallback
+  const clientName = session.player.product || session.player.platform || '';
+  const deviceHint = session.player.device || '';
+  const normalized = normalizeClient(clientName, deviceHint, serverType);
+  const platform = normalized.platform;
+  const device = normalized.device;
 
   return {
     sessionKey: session.sessionKey,

@@ -51,7 +51,7 @@ export type { PollerConfig } from './types.js';
 // Pure Utility Functions (exported for testing)
 // ============================================================================
 
-export { isPrivateIP, parseJellyfinClient, formatQualityString } from './utils.js';
+export { isPrivateIP, formatQualityString } from './utils.js';
 
 // ============================================================================
 // State Tracking Functions (exported for testing)

@@ -26,6 +26,7 @@ import { geoipService } from './geoip.js';
 import type { PubSubService } from './cache.js';
 import { JellyfinClient } from './mediaServer/jellyfin/client.js';
 import { EmbyClient } from './mediaServer/emby/client.js';
+import { normalizeClient } from '../utils/platformNormalizer.js';
 import {
   createUserMapping,
   createSkippedUserTracker,
@@ -108,6 +109,9 @@ interface MediaServerClientWithItems {
       IndexNumber?: number;
       ProductionYear?: number;
       ImageTags?: { Primary?: string };
+      // Episode series info for poster lookup
+      SeriesId?: string;
+      SeriesPrimaryImageTag?: string;
     }[]
   >;
 }
@@ -200,11 +204,21 @@ export function transformActivityToSession(
     geoCountry: geo.country,
     geoLat: geo.lat,
     geoLon: geo.lon,
-    playerName: activity.DeviceName ?? activity.Client ?? 'Unknown',
-    device: activity.DeviceName ?? activity.Client ?? null,
-    deviceId: activity.DeviceId ?? null,
-    product: activity.Client ?? null,
-    platform: activity.Client ?? null,
+    // Normalize client info for consistency with live sessions
+    // normalizeClient handles "AndroidTv" → "Android TV", "Emby for Kodi Next Gen" → "Kodi", etc.
+    ...(() => {
+      const clientName = activity.Client ?? '';
+      const deviceName = activity.DeviceName ?? '';
+      const normalized = normalizeClient(clientName, deviceName, 'jellyfin');
+      return {
+        // Truncate string fields to varchar limits - some Jellyfin clients send very long strings
+        playerName: (deviceName || clientName || 'Unknown').substring(0, 255),
+        device: normalized.device.substring(0, 255),
+        deviceId: activity.DeviceId?.substring(0, 255) ?? null,
+        product: clientName.substring(0, 255) || null,
+        platform: normalized.platform.substring(0, 100), // platform is varchar(100)
+      };
+    })(),
     quality: null,
     isTranscode,
     videoDecision,
@@ -241,7 +255,12 @@ async function fetchMediaEnrichment(
       if (item.ProductionYear != null) {
         enrichment.year = item.ProductionYear;
       }
-      if (item.ImageTags?.Primary) {
+
+      // For episodes, use series poster if available (preferred for consistency with live sessions)
+      // Fall back to episode's own image if series info is missing
+      if (item.SeriesId && item.SeriesPrimaryImageTag) {
+        enrichment.thumbPath = `/Items/${item.SeriesId}/Images/Primary`;
+      } else if (item.ImageTags?.Primary) {
         enrichment.thumbPath = `/Items/${item.Id}/Images/Primary`;
       }
 

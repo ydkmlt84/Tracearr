@@ -222,7 +222,8 @@ export class JellyfinClient implements IMediaServerClient, IMediaServerClientWit
 
     const params = new URLSearchParams({
       Ids: ids.join(','),
-      Fields: 'ProductionYear,ParentIndexNumber,IndexNumber',
+      // Include SeriesId and SeriesPrimaryImageTag for episode series poster lookup
+      Fields: 'ProductionYear,ParentIndexNumber,IndexNumber,SeriesId,SeriesPrimaryImageTag',
     });
 
     const data = await fetchJson<{ Items?: unknown[] }>(`${this.baseUrl}/Items?${params}`, {

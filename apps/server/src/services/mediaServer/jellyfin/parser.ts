@@ -530,6 +530,9 @@ export interface JellyfinItemResult {
   ImageTags?: {
     Primary?: string;
   };
+  // Episode series info for poster lookup
+  SeriesId?: string;
+  SeriesPrimaryImageTag?: string;
 }
 
 /**
@@ -544,6 +547,9 @@ export function parseItem(item: Record<string, unknown>): JellyfinItemResult {
     IndexNumber: parseOptionalNumber(item.IndexNumber),
     ProductionYear: parseOptionalNumber(item.ProductionYear),
     ImageTags: imageTags?.Primary ? { Primary: parseString(imageTags.Primary) } : undefined,
+    // Episode series info for poster lookup
+    SeriesId: parseOptionalString(item.SeriesId),
+    SeriesPrimaryImageTag: parseOptionalString(item.SeriesPrimaryImageTag),
   };
 }
 

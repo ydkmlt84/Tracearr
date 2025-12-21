@@ -128,7 +128,7 @@ export const JWT_CONFIG = {
 
 // Polling intervals in milliseconds
 export const POLLING_INTERVALS = {
-  SESSIONS: 15000,
+  SESSIONS: 7000,
   STATS_REFRESH: 60000,
   SERVER_HEALTH: 30000,
   // Reconciliation interval when SSE is active (fallback check)

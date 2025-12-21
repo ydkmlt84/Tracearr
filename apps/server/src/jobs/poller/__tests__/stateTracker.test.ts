@@ -192,6 +192,97 @@ describe('calculateStopDuration', () => {
       expect(result.durationMs).toBe(2 * 60 * 60 * 1000);
     });
   });
+
+  describe('progressMs cap', () => {
+    it('should cap duration at progressMs when pause tracking failed', () => {
+      const startedAt = new Date('2024-01-01T10:00:00Z');
+      const stoppedAt = new Date('2024-01-01T13:00:00Z'); // 3h elapsed
+
+      const result = calculateStopDuration(
+        {
+          startedAt,
+          lastPausedAt: null,
+          pausedDurationMs: 0,
+          progressMs: 30 * 60 * 1000, // 30min progress
+        },
+        stoppedAt
+      );
+
+      expect(result.durationMs).toBe(31 * 60 * 1000); // 30min + 1min tolerance
+      expect(result.finalPausedDurationMs).toBe(3 * 60 * 60 * 1000 - 31 * 60 * 1000);
+    });
+
+    it('should not cap when within tolerance', () => {
+      const startedAt = new Date('2024-01-01T10:00:00Z');
+      const stoppedAt = new Date('2024-01-01T10:30:30Z'); // 30.5min
+
+      const result = calculateStopDuration(
+        {
+          startedAt,
+          lastPausedAt: null,
+          pausedDurationMs: 0,
+          progressMs: 30 * 60 * 1000,
+        },
+        stoppedAt
+      );
+
+      expect(result.durationMs).toBe(30.5 * 60 * 1000);
+      expect(result.finalPausedDurationMs).toBe(0);
+    });
+
+    it('should not cap when progressMs is null', () => {
+      const startedAt = new Date('2024-01-01T10:00:00Z');
+      const stoppedAt = new Date('2024-01-01T13:00:00Z');
+
+      const result = calculateStopDuration(
+        {
+          startedAt,
+          lastPausedAt: null,
+          pausedDurationMs: 0,
+          progressMs: null,
+        },
+        stoppedAt
+      );
+
+      expect(result.durationMs).toBe(3 * 60 * 60 * 1000);
+    });
+
+    it('should not cap when progressMs is zero', () => {
+      const startedAt = new Date('2024-01-01T10:00:00Z');
+      const stoppedAt = new Date('2024-01-01T10:01:00Z');
+
+      const result = calculateStopDuration(
+        {
+          startedAt,
+          lastPausedAt: null,
+          pausedDurationMs: 0,
+          progressMs: 0,
+        },
+        stoppedAt
+      );
+
+      expect(result.durationMs).toBe(60 * 1000);
+    });
+
+    it('should apply cap even with partial pause tracking', () => {
+      const startedAt = new Date('2024-01-01T10:00:00Z');
+      const stoppedAt = new Date('2024-01-01T14:00:00Z'); // 4h elapsed
+
+      const result = calculateStopDuration(
+        {
+          startedAt,
+          lastPausedAt: null,
+          pausedDurationMs: 60 * 60 * 1000, // 1h tracked pause
+          progressMs: 60 * 60 * 1000, // 1h progress
+        },
+        stoppedAt
+      );
+
+      // 4h - 1h tracked = 3h, but only 1h progress so cap at 1h + 1min
+      expect(result.durationMs).toBe(61 * 60 * 1000);
+      expect(result.finalPausedDurationMs).toBe(60 * 60 * 1000 + (3 * 60 - 61) * 60 * 1000);
+    });
+  });
 });
 
 describe('checkWatchCompletion', () => {

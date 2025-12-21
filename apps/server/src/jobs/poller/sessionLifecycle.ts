@@ -480,6 +480,7 @@ export async function stopSessionAtomic(input: SessionStopInput): Promise<Sessio
       startedAt: session.startedAt,
       lastPausedAt: session.lastPausedAt,
       pausedDurationMs: session.pausedDurationMs ?? 0,
+      progressMs: session.progressMs,
     },
     stoppedAt
   );

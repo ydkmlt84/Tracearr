@@ -153,6 +153,8 @@ export interface SessionPauseData {
   startedAt: Date;
   lastPausedAt: Date | null;
   pausedDurationMs: number;
+  /** Playback position - used to cap duration when pause tracking fails */
+  progressMs?: number | null;
 }
 
 // ============================================================================

@@ -58,19 +58,7 @@ export function calculatePauseAccumulation(
 /**
  * Calculate final duration when a session is stopped.
  * Accounts for any remaining pause time if stopped while paused.
- *
- * @param session - Session pause tracking data
- * @param stoppedAt - Timestamp when session stopped
- * @returns Actual watch duration and final paused duration
- *
- * @example
- * // Session that was playing when stopped
- * calculateStopDuration({ startedAt: tenMinutesAgo, lastPausedAt: null, pausedDurationMs: 60000 }, now);
- * // Returns: { durationMs: 540000, finalPausedDurationMs: 60000 } (9 min watch, 1 min paused)
- *
- * // Session that was paused when stopped (adds remaining pause time)
- * calculateStopDuration({ startedAt: tenMinutesAgo, lastPausedAt: twoMinutesAgo, pausedDurationMs: 60000 }, now);
- * // Returns: { durationMs: 420000, finalPausedDurationMs: 180000 } (7 min watch, 3 min paused)
+ * Uses progressMs as sanity check to cap duration when pause tracking fails.
  */
 export function calculateStopDuration(
   session: SessionPauseData,
@@ -85,8 +73,19 @@ export function calculateStopDuration(
     finalPausedDurationMs += stoppedAt.getTime() - session.lastPausedAt.getTime();
   }
 
-  // Calculate actual watch duration (excludes all paused time)
-  const durationMs = Math.max(0, totalElapsedMs - finalPausedDurationMs);
+  let durationMs = Math.max(0, totalElapsedMs - finalPausedDurationMs);
+
+  // Cap duration at progressMs + 60s if pause tracking failed
+  if (session.progressMs != null && session.progressMs > 0) {
+    const maxDurationMs = session.progressMs + 60000;
+    if (durationMs > maxDurationMs) {
+      console.log(
+        `[StateTracker] Duration capped: ${Math.round(durationMs / 1000)}s -> ${Math.round(maxDurationMs / 1000)}s (progress: ${Math.round(session.progressMs / 1000)}s)`
+      );
+      finalPausedDurationMs += durationMs - maxDurationMs;
+      durationMs = maxDurationMs;
+    }
+  }
 
   return { durationMs, finalPausedDurationMs };
 }

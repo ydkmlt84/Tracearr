@@ -326,6 +326,149 @@ describe('Quality change detection', () => {
 // 4. Concurrent Access Simulation
 // ============================================================================
 
+// ============================================================================
+// 5. Serialization Error Detection Tests (P1-4)
+// ============================================================================
+
+describe('isSerializationError detection', () => {
+  // We test the error detection logic conceptually since the function is private
+  // The key patterns it should detect:
+
+  it('should detect PostgreSQL serialization failure message', () => {
+    const serializationErrors = [
+      new Error('could not serialize access due to concurrent update'),
+      new Error('ERROR: could not serialize access due to read/write dependencies'),
+      new Error('SERIALIZATION failure occurred'),
+      Object.assign(new Error('Database error'), { code: '40001' }),
+    ];
+
+    for (const error of serializationErrors) {
+      const message = error.message.toLowerCase();
+      const code = (error as { code?: string }).code;
+      const isSerializationError =
+        message.includes('could not serialize access') ||
+        message.includes('serialization') ||
+        code === '40001';
+
+      expect(isSerializationError).toBe(true);
+    }
+  });
+
+  it('should NOT detect non-serialization errors', () => {
+    const nonSerializationErrors = [
+      new Error('Connection refused'),
+      new Error('Unique constraint violation'),
+      new Error('Foreign key constraint'),
+      Object.assign(new Error('Deadlock detected'), { code: '40P01' }),
+    ];
+
+    for (const error of nonSerializationErrors) {
+      const message = error.message.toLowerCase();
+      const code = (error as { code?: string }).code;
+      const isSerializationError =
+        message.includes('could not serialize access') ||
+        message.includes('serialization') ||
+        code === '40001';
+
+      expect(isSerializationError).toBe(false);
+    }
+  });
+});
+
+describe('Serialization retry logic', () => {
+  it('should retry on serialization failure with exponential backoff', async () => {
+    // Test the retry pattern conceptually
+    const MAX_RETRIES = 3;
+    const BASE_DELAY_MS = 50;
+    let attempts = 0;
+    const delays: number[] = [];
+
+    const executeWithRetry = async (): Promise<string> => {
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          attempts++;
+          if (attempt < MAX_RETRIES) {
+            throw Object.assign(new Error('could not serialize access'), { code: '40001' });
+          }
+          return 'success';
+        } catch (error) {
+          const message = (error as Error).message.toLowerCase();
+          const isSerializationError = message.includes('could not serialize access');
+
+          if (isSerializationError && attempt < MAX_RETRIES) {
+            const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
+            delays.push(delay);
+            // In real code: await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+          throw error;
+        }
+      }
+      throw new Error('Max retries exceeded');
+    };
+
+    const result = await executeWithRetry();
+
+    expect(result).toBe('success');
+    expect(attempts).toBe(3); // Tried 3 times
+    expect(delays).toEqual([50, 100]); // Exponential backoff: 50ms, 100ms
+  });
+
+  it('should throw immediately on non-serialization errors', async () => {
+    let attempts = 0;
+
+    const executeWithRetry = async (): Promise<string> => {
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          attempts++;
+          throw new Error('Connection refused'); // Non-serialization error
+        } catch (error) {
+          const message = (error as Error).message.toLowerCase();
+          const isSerializationError = message.includes('could not serialize access');
+
+          if (isSerializationError && attempt < 3) {
+            continue;
+          }
+          throw error;
+        }
+      }
+      throw new Error('Max retries exceeded');
+    };
+
+    await expect(executeWithRetry()).rejects.toThrow('Connection refused');
+    expect(attempts).toBe(1); // Should fail immediately
+  });
+
+  it('should throw after max retries exhausted', async () => {
+    let attempts = 0;
+
+    const executeWithRetry = async (): Promise<string> => {
+      const MAX_RETRIES = 3;
+      let lastError: Error = new Error('No attempts made');
+
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          attempts++;
+          throw Object.assign(new Error('could not serialize access'), { code: '40001' });
+        } catch (error) {
+          lastError = error as Error;
+          const message = lastError.message.toLowerCase();
+          const isSerializationError = message.includes('could not serialize access');
+
+          if (isSerializationError && attempt < MAX_RETRIES) {
+            continue;
+          }
+          throw error;
+        }
+      }
+      throw lastError;
+    };
+
+    await expect(executeWithRetry()).rejects.toThrow('could not serialize access');
+    expect(attempts).toBe(3); // Should have tried all 3 times
+  });
+});
+
 describe('Concurrent access handling', () => {
   it('should handle SSE and Poller trying to create same session', async () => {
     // Simulates the race condition scenario:

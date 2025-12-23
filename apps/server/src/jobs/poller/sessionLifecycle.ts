@@ -16,9 +16,10 @@ import {
   checkWatchCompletion,
   shouldRecordSession,
 } from './stateTracker.js';
+import { sql } from 'drizzle-orm';
 import {
   createViolationInTransaction,
-  isDuplicateViolation,
+  isDuplicateViolationInTransaction,
   type ViolationInsertResult,
 } from './violations.js';
 import type {
@@ -30,6 +31,33 @@ import type {
   MediaChangeInput,
   MediaChangeResult,
 } from './types.js';
+
+// ============================================================================
+// Serialization Retry Logic
+// ============================================================================
+
+// Constants for serializable transaction retry logic
+const MAX_SERIALIZATION_RETRIES = 3;
+const SERIALIZATION_RETRY_BASE_MS = 50; // P2-7: Increased from 10ms for better backoff
+const TRANSACTION_TIMEOUT_MS = 10000; // P2-8: 10 second timeout for transactions
+
+/**
+ * Check if an error is a PostgreSQL serialization failure.
+ * These occur when SERIALIZABLE transactions conflict.
+ */
+function isSerializationError(error: unknown): boolean {
+  if (error instanceof Error) {
+    // PostgreSQL error code 40001 = serialization_failure
+    // The error message typically contains "could not serialize access"
+    const message = error.message.toLowerCase();
+    return (
+      message.includes('could not serialize access') ||
+      message.includes('serialization') ||
+      (error as { code?: string }).code === '40001'
+    );
+  }
+  return false;
+}
 
 // ============================================================================
 // ActiveSession Builder
@@ -326,142 +354,183 @@ export async function createSessionWithRulesAtomic(
     }
   }
 
-  // STEP 3: Atomic transaction - insert session + evaluate rules + create violations
-  const { insertedSession, violationResults } = await db.transaction(async (tx) => {
-    const insertedRows = await tx
-      .insert(sessions)
-      .values({
-        serverId: server.id,
-        serverUserId: serverUser.id,
-        sessionKey: processed.sessionKey,
-        plexSessionId: processed.plexSessionId || null,
-        ratingKey: processed.ratingKey || null,
-        state: processed.state,
-        mediaType: processed.mediaType,
-        mediaTitle: processed.mediaTitle,
-        grandparentTitle: processed.grandparentTitle || null,
-        seasonNumber: processed.seasonNumber || null,
-        episodeNumber: processed.episodeNumber || null,
-        year: processed.year || null,
-        thumbPath: processed.thumbPath || null,
-        startedAt: new Date(),
-        lastSeenAt: new Date(),
-        totalDurationMs: processed.totalDurationMs || null,
-        progressMs: processed.progressMs || null,
-        lastPausedAt:
-          processed.lastPausedDate ?? (processed.state === 'paused' ? new Date() : null),
-        pausedDurationMs: 0,
-        referenceId,
-        watched: false,
-        ipAddress: processed.ipAddress,
-        geoCity: geo.city,
-        geoRegion: geo.region,
-        geoCountry: geo.countryCode ?? geo.country,
-        geoLat: geo.lat,
-        geoLon: geo.lon,
-        playerName: processed.playerName,
-        deviceId: processed.deviceId || null,
-        product: processed.product || null,
-        device: processed.device || null,
-        platform: processed.platform,
-        quality: processed.quality,
-        isTranscode: processed.isTranscode,
-        videoDecision: processed.videoDecision,
-        audioDecision: processed.audioDecision,
-        bitrate: processed.bitrate,
-      })
-      .returning();
+  // STEP 3: Atomic transaction with SERIALIZABLE isolation and retry logic
+  // SERIALIZABLE prevents phantom reads that cause duplicate violations
+  let lastError: unknown;
 
-    const inserted = insertedRows[0];
-    if (!inserted) {
-      throw new Error('Failed to insert session');
-    }
+  for (let attempt = 1; attempt <= MAX_SERIALIZATION_RETRIES; attempt++) {
+    try {
+      const { insertedSession, violationResults } = await db.transaction(async (tx) => {
+        // Set SERIALIZABLE isolation to prevent duplicate violations from concurrent polls
+        // This ensures that if two transactions read the violations table simultaneously,
+        // one will be forced to retry after the other commits
+        await tx.execute(sql`SET TRANSACTION ISOLATION LEVEL SERIALIZABLE`);
 
-    // Build session object for rule evaluation
-    const session = {
-      id: inserted.id,
-      serverId: server.id,
-      serverUserId: serverUser.id,
-      sessionKey: processed.sessionKey,
-      state: processed.state,
-      mediaType: processed.mediaType,
-      mediaTitle: processed.mediaTitle,
-      grandparentTitle: processed.grandparentTitle || null,
-      seasonNumber: processed.seasonNumber || null,
-      episodeNumber: processed.episodeNumber || null,
-      year: processed.year || null,
-      thumbPath: processed.thumbPath || null,
-      ratingKey: processed.ratingKey || null,
-      externalSessionId: null,
-      startedAt: inserted.startedAt,
-      stoppedAt: null,
-      durationMs: null,
-      totalDurationMs: processed.totalDurationMs || null,
-      progressMs: processed.progressMs || null,
-      lastPausedAt: inserted.lastPausedAt,
-      pausedDurationMs: inserted.pausedDurationMs,
-      referenceId: inserted.referenceId,
-      watched: inserted.watched,
-      ipAddress: processed.ipAddress,
-      geoCity: geo.city,
-      geoRegion: geo.region,
-      geoCountry: geo.countryCode ?? geo.country,
-      geoLat: geo.lat,
-      geoLon: geo.lon,
-      playerName: processed.playerName,
-      deviceId: processed.deviceId || null,
-      product: processed.product || null,
-      device: processed.device || null,
-      platform: processed.platform,
-      quality: processed.quality,
-      isTranscode: processed.isTranscode,
-      videoDecision: processed.videoDecision,
-      audioDecision: processed.audioDecision,
-      bitrate: processed.bitrate,
-    };
+        // P2-8: Set transaction timeout to prevent long-running transactions
+        await tx.execute(sql`SET LOCAL statement_timeout = ${TRANSACTION_TIMEOUT_MS}`);
 
-    // Evaluate rules
-    const ruleResults = await ruleEngine.evaluateSession(session, activeRules, recentSessions);
+        const insertedRows = await tx
+          .insert(sessions)
+          .values({
+            serverId: server.id,
+            serverUserId: serverUser.id,
+            sessionKey: processed.sessionKey,
+            plexSessionId: processed.plexSessionId || null,
+            ratingKey: processed.ratingKey || null,
+            state: processed.state,
+            mediaType: processed.mediaType,
+            mediaTitle: processed.mediaTitle,
+            grandparentTitle: processed.grandparentTitle || null,
+            seasonNumber: processed.seasonNumber || null,
+            episodeNumber: processed.episodeNumber || null,
+            year: processed.year || null,
+            thumbPath: processed.thumbPath || null,
+            startedAt: new Date(),
+            lastSeenAt: new Date(),
+            totalDurationMs: processed.totalDurationMs || null,
+            progressMs: processed.progressMs || null,
+            lastPausedAt:
+              processed.lastPausedDate ?? (processed.state === 'paused' ? new Date() : null),
+            pausedDurationMs: 0,
+            referenceId,
+            watched: false,
+            ipAddress: processed.ipAddress,
+            geoCity: geo.city,
+            geoRegion: geo.region,
+            geoCountry: geo.countryCode ?? geo.country,
+            geoLat: geo.lat,
+            geoLon: geo.lon,
+            playerName: processed.playerName,
+            deviceId: processed.deviceId || null,
+            product: processed.product || null,
+            device: processed.device || null,
+            platform: processed.platform,
+            quality: processed.quality,
+            isTranscode: processed.isTranscode,
+            videoDecision: processed.videoDecision,
+            audioDecision: processed.audioDecision,
+            bitrate: processed.bitrate,
+          })
+          .returning();
 
-    // Create violations within same transaction
-    const createdViolations: ViolationInsertResult[] = [];
-    for (const result of ruleResults) {
-      // Issue #67: Use result.rule directly instead of .find() to get correct rule attribution
-      if (result.violated && result.rule) {
-        const matchingRule = result.rule;
-        const relatedSessionIds = (result.data?.relatedSessionIds as string[]) || [];
-        const isDuplicate = await isDuplicateViolation(
-          serverUser.id,
-          matchingRule.type,
-          inserted.id,
-          relatedSessionIds
-        );
-
-        if (isDuplicate) {
-          continue;
+        const inserted = insertedRows[0];
+        if (!inserted) {
+          throw new Error('Failed to insert session');
         }
 
-        const violationResult = await createViolationInTransaction(
-          tx,
-          matchingRule.id,
-          serverUser.id,
-          inserted.id,
-          result,
-          matchingRule
+        // Build session object for rule evaluation
+        const session = {
+          id: inserted.id,
+          serverId: server.id,
+          serverUserId: serverUser.id,
+          sessionKey: processed.sessionKey,
+          state: processed.state,
+          mediaType: processed.mediaType,
+          mediaTitle: processed.mediaTitle,
+          grandparentTitle: processed.grandparentTitle || null,
+          seasonNumber: processed.seasonNumber || null,
+          episodeNumber: processed.episodeNumber || null,
+          year: processed.year || null,
+          thumbPath: processed.thumbPath || null,
+          ratingKey: processed.ratingKey || null,
+          externalSessionId: null,
+          startedAt: inserted.startedAt,
+          stoppedAt: null,
+          durationMs: null,
+          totalDurationMs: processed.totalDurationMs || null,
+          progressMs: processed.progressMs || null,
+          lastPausedAt: inserted.lastPausedAt,
+          pausedDurationMs: inserted.pausedDurationMs,
+          referenceId: inserted.referenceId,
+          watched: inserted.watched,
+          ipAddress: processed.ipAddress,
+          geoCity: geo.city,
+          geoRegion: geo.region,
+          geoCountry: geo.countryCode ?? geo.country,
+          geoLat: geo.lat,
+          geoLon: geo.lon,
+          playerName: processed.playerName,
+          deviceId: processed.deviceId || null,
+          product: processed.product || null,
+          device: processed.device || null,
+          platform: processed.platform,
+          quality: processed.quality,
+          isTranscode: processed.isTranscode,
+          videoDecision: processed.videoDecision,
+          audioDecision: processed.audioDecision,
+          bitrate: processed.bitrate,
+        };
+
+        // Evaluate rules
+        const ruleResults = await ruleEngine.evaluateSession(session, activeRules, recentSessions);
+
+        // Create violations within same transaction using transaction-aware dedup
+        const createdViolations: ViolationInsertResult[] = [];
+        for (const result of ruleResults) {
+          // Issue #67: Use result.rule directly instead of .find() to get correct rule attribution
+          if (result.violated && result.rule) {
+            const matchingRule = result.rule;
+            const relatedSessionIds = (result.data?.relatedSessionIds as string[]) || [];
+
+            // Use transaction-aware duplicate check (reads within SERIALIZABLE isolation)
+            const isDuplicate = await isDuplicateViolationInTransaction(
+              tx,
+              serverUser.id,
+              matchingRule.type,
+              inserted.id,
+              relatedSessionIds
+            );
+
+            if (isDuplicate) {
+              continue;
+            }
+
+            const violationResult = await createViolationInTransaction(
+              tx,
+              matchingRule.id,
+              serverUser.id,
+              inserted.id,
+              result,
+              matchingRule
+            );
+            // Only add if insert succeeded (not blocked by DB constraint)
+            if (violationResult) {
+              createdViolations.push(violationResult);
+            }
+          }
+        }
+
+        return { insertedSession: inserted, violationResults: createdViolations };
+      });
+
+      // Transaction succeeded, return result
+      return {
+        insertedSession,
+        violationResults,
+        qualityChange,
+        referenceId,
+      };
+    } catch (error) {
+      lastError = error;
+
+      // Check if this is a serialization error that we can retry
+      if (isSerializationError(error) && attempt < MAX_SERIALIZATION_RETRIES) {
+        // Exponential backoff: 10ms, 20ms, 40ms
+        const delayMs = SERIALIZATION_RETRY_BASE_MS * Math.pow(2, attempt - 1);
+        console.log(
+          `[SessionLifecycle] Serialization conflict on attempt ${attempt}/${MAX_SERIALIZATION_RETRIES}, retrying in ${delayMs}ms...`
         );
-        createdViolations.push(violationResult);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
       }
+
+      // Not a serialization error or max retries exceeded - rethrow
+      throw error;
     }
+  }
 
-    return { insertedSession: inserted, violationResults: createdViolations };
-  });
-
-  return {
-    insertedSession,
-    violationResults,
-    qualityChange,
-    referenceId,
-  };
+  // Should never reach here, but TypeScript needs it
+  throw lastError;
 }
 
 // ============================================================================

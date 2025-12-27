@@ -132,7 +132,9 @@ function GeoRestrictionInput({
         <CountryMultiSelect
           value={countries}
           onChange={handleCountriesChange}
-          placeholder={mode === 'blocklist' ? 'Select countries to block...' : 'Select allowed countries...'}
+          placeholder={
+            mode === 'blocklist' ? 'Select countries to block...' : 'Select allowed countries...'
+          }
         />
         <p className="text-muted-foreground text-xs">
           {mode === 'allowlist' && 'Streams from any other country will trigger a violation.'}
@@ -160,11 +162,7 @@ function ExcludePrivateIpsToggle({
           Ignore sessions from local/private IPs (e.g., 192.168.x.x, 10.x.x.x)
         </p>
       </div>
-      <Switch
-        id="excludePrivateIps"
-        checked={checked}
-        onCheckedChange={onCheckedChange}
-      />
+      <Switch id="excludePrivateIps" checked={checked} onCheckedChange={onCheckedChange} />
     </div>
   );
 }
@@ -239,7 +237,8 @@ function RuleParamsForm({
               }}
             />
             <p className="text-muted-foreground text-xs">
-              Minimum distance between locations to trigger. Default: {defaultDisplay} {distanceUnit}
+              Minimum distance between locations to trigger. Default: {defaultDisplay}{' '}
+              {distanceUnit}
             </p>
           </div>
           <ExcludePrivateIpsToggle
@@ -250,8 +249,7 @@ function RuleParamsForm({
       );
     }
     case 'device_velocity': {
-      const groupByDevice =
-        (params as { groupByDevice?: boolean }).groupByDevice ?? false;
+      const groupByDevice = (params as { groupByDevice?: boolean }).groupByDevice ?? false;
       return (
         <div className="space-y-4">
           <div className="space-y-2">

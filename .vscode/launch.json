@@ -1,57 +1,48 @@
 {
-    "version": "0.2.0",
-    "configurations": [
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Attach to Server",
+      "type": "node",
+      "request": "attach",
+      "port": 9229,
+      "restart": true,
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+    },
+    {
+      "name": "Debug Web (Chrome)",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/apps/web",
+      "sourceMaps": true,
+      "sourceMapPathOverrides": {
+        "webpack:///src/*": "${webRoot}/src/*"
+      }
+    },
+    {
+      "name": "Debug Web (Firefox)",
+      "type": "firefox",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "profile": "firefox-debugger",
+      "webRoot": "${workspaceFolder}/apps/web",
+      "pathMappings": [
         {
-            "name": "Attach to Server",
-            "type": "node",
-            "request": "attach",
-            "port": 9229,
-            "restart": true,
-            "skipFiles": [
-                "<node_internals>/**",
-                "**/node_modules/**"
-            ]
-        },
-        {
-            "name": "Debug Web (Chrome)",
-            "type": "chrome",
-            "request": "launch",
-            "url": "http://localhost:5173",
-            "webRoot": "${workspaceFolder}/apps/web",
-            "sourceMaps": true,
-            "sourceMapPathOverrides": {
-                "webpack:///src/*": "${webRoot}/src/*"
-            }
-        },
-        {
-            "name": "Debug Web (Firefox)",
-            "type": "firefox",
-            "request": "launch",
-            "url": "http://localhost:5173",
-            "profile": "firefox-debugger",
-            "webRoot": "${workspaceFolder}/apps/web",
-            "pathMappings": [
-                {
-                    "url": "webpack:///src",
-                    "path": "${workspaceFolder}/apps/web/src"
-                }
-            ]
+          "url": "webpack:///src",
+          "path": "${workspaceFolder}/apps/web/src"
         }
-    ],
-    "compounds": [
-        {
-            "name": "Debug All (Chrome)",
-            "configurations": [
-                "Attach to Server",
-                "Debug Web (Chrome)"
-            ]
-        },
-        {
-            "name": "Debug All (Firefox)",
-            "configurations": [
-                "Attach to Server",
-                "Debug Web (Firefox)"
-            ]
-        }
-    ]
+      ]
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Debug All (Chrome)",
+      "configurations": ["Attach to Server", "Debug Web (Chrome)"]
+    },
+    {
+      "name": "Debug All (Firefox)",
+      "configurations": ["Attach to Server", "Debug Web (Firefox)"]
+    }
+  ]
 }

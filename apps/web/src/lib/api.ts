@@ -832,10 +832,13 @@ class ApiClient {
         }>;
       }>('/maintenance/jobs'),
     startJob: (type: string) =>
-      this.request<{ status: string; jobId: string; message: string }>(`/maintenance/jobs/${type}`, {
-        method: 'POST',
-        body: '{}',
-      }),
+      this.request<{ status: string; jobId: string; message: string }>(
+        `/maintenance/jobs/${type}`,
+        {
+          method: 'POST',
+          body: '{}',
+        }
+      ),
     getProgress: () =>
       this.request<{
         progress: {

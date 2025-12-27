@@ -18,11 +18,7 @@ import { createMockSession, createMockRule } from '../../test/fixtures.js';
 /**
  * Helper to create a session with a private IP
  */
-function createPrivateIpSession(
-  serverUserId: string,
-  ip: string,
-  hoursAgo: number = 0
-) {
+function createPrivateIpSession(serverUserId: string, ip: string, hoursAgo: number = 0) {
   return createMockSession({
     serverUserId,
     ipAddress: ip,
@@ -38,11 +34,7 @@ function createPrivateIpSession(
 /**
  * Helper to create a session with a public IP
  */
-function createPublicIpSession(
-  serverUserId: string,
-  ip: string,
-  hoursAgo: number = 0
-) {
+function createPublicIpSession(serverUserId: string, ip: string, hoursAgo: number = 0) {
   return createMockSession({
     serverUserId,
     ipAddress: ip,

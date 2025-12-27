@@ -175,7 +175,9 @@ describe('normalizeResolution', () => {
     });
 
     it('should return null for empty input', () => {
-      expect(normalizeResolution({ resolution: undefined, width: undefined, height: undefined })).toBeNull();
+      expect(
+        normalizeResolution({ resolution: undefined, width: undefined, height: undefined })
+      ).toBeNull();
     });
   });
 });

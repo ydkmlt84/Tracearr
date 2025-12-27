@@ -88,9 +88,11 @@ describe('RuleEngine - Multi-Rule Scenarios', () => {
         params: { maxStreams: 1 },
       });
 
-      const results = await ruleEngine.evaluateSession(currentSession, [geoRule, concurrentRule], [
-        activeSession,
-      ]);
+      const results = await ruleEngine.evaluateSession(
+        currentSession,
+        [geoRule, concurrentRule],
+        [activeSession]
+      );
 
       const geoViolation = results.find((r) => r.rule?.type === 'geo_restriction');
       const concurrentViolation = results.find((r) => r.rule?.type === 'concurrent_streams');

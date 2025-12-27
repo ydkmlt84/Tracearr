@@ -368,7 +368,9 @@ export async function createSessionWithRulesAtomic(
 
         // P2-8: Set transaction timeout to prevent long-running transactions
         // Note: SET LOCAL doesn't support parameterized queries, must use raw value
-        await tx.execute(sql`SET LOCAL statement_timeout = ${sql.raw(String(TRANSACTION_TIMEOUT_MS))}`);
+        await tx.execute(
+          sql`SET LOCAL statement_timeout = ${sql.raw(String(TRANSACTION_TIMEOUT_MS))}`
+        );
 
         const insertedRows = await tx
           .insert(sessions)

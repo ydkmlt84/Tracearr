@@ -37,7 +37,7 @@ export const maintenanceRoutes: FastifyPluginAsync = async (app) => {
           name: 'Normalize Country Codes',
           description:
             'Run this if you see both "US" and "United States" in your history, ' +
-            'or if geo restriction rules aren\'t matching older sessions correctly.',
+            "or if geo restriction rules aren't matching older sessions correctly.",
         },
         {
           type: 'fix_imported_progress',
@@ -65,7 +65,11 @@ export const maintenanceRoutes: FastifyPluginAsync = async (app) => {
       const { type } = request.params;
 
       // Validate job type
-      const validTypes: MaintenanceJobType[] = ['normalize_players', 'normalize_countries', 'fix_imported_progress'];
+      const validTypes: MaintenanceJobType[] = [
+        'normalize_players',
+        'normalize_countries',
+        'fix_imported_progress',
+      ];
       if (!validTypes.includes(type as MaintenanceJobType)) {
         return reply.badRequest(`Invalid job type: ${type}`);
       }

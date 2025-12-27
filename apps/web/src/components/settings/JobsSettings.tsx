@@ -246,11 +246,14 @@ export function JobsSettings() {
                       )}
                     >
                       <JobIcon
-                        className={cn('h-5 w-5', isRunning ? 'text-primary' : 'text-muted-foreground')}
+                        className={cn(
+                          'h-5 w-5',
+                          isRunning ? 'text-primary' : 'text-muted-foreground'
+                        )}
                       />
                     </div>
                     <div className="space-y-1">
-                      <h3 className="font-medium leading-none">{job.name}</h3>
+                      <h3 className="leading-none font-medium">{job.name}</h3>
                       <p className="text-muted-foreground text-sm">{job.description}</p>
                     </div>
                   </div>
@@ -299,13 +302,17 @@ export function JobsSettings() {
                       )}
                       {progress.skippedRecords > 0 && (
                         <span className="text-muted-foreground">
-                          <span className="font-medium">{progress.skippedRecords.toLocaleString()}</span>{' '}
+                          <span className="font-medium">
+                            {progress.skippedRecords.toLocaleString()}
+                          </span>{' '}
                           unchanged
                         </span>
                       )}
                       {progress.errorRecords > 0 && (
                         <span className="text-destructive">
-                          <span className="font-medium">{progress.errorRecords.toLocaleString()}</span>{' '}
+                          <span className="font-medium">
+                            {progress.errorRecords.toLocaleString()}
+                          </span>{' '}
                           errors
                         </span>
                       )}
@@ -321,7 +328,9 @@ export function JobsSettings() {
             <div className="flex items-start gap-3 rounded-lg border border-green-500/20 bg-green-500/5 p-3">
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-green-600">Last job completed successfully</p>
+                <p className="text-sm font-medium text-green-600">
+                  Last job completed successfully
+                </p>
                 <p className="text-muted-foreground truncate text-xs">{progress.message}</p>
               </div>
               <Button
@@ -364,7 +373,9 @@ export function JobsSettings() {
                 <Clock className="h-4 w-4" />
                 Job History
               </CardTitle>
-              <CardDescription className="text-sm">Recent maintenance job executions</CardDescription>
+              <CardDescription className="text-sm">
+                Recent maintenance job executions
+              </CardDescription>
             </div>
             <Button
               variant="ghost"
@@ -425,14 +436,18 @@ export function JobsSettings() {
                         <span className="truncate text-sm font-medium capitalize">
                           {item.type.replace(/_/g, ' ')}
                         </span>
-                        <Badge variant={isSuccess ? 'secondary' : 'destructive'} className="text-[10px]">
+                        <Badge
+                          variant={isSuccess ? 'secondary' : 'destructive'}
+                          className="text-[10px]"
+                        >
                           {isSuccess ? 'Completed' : 'Failed'}
                         </Badge>
                       </div>
                       {item.result && (
                         <p className="text-muted-foreground mt-0.5 truncate text-xs">
                           {item.result.processed.toLocaleString()} processed
-                          {item.result.updated > 0 && ` · ${item.result.updated.toLocaleString()} updated`}
+                          {item.result.updated > 0 &&
+                            ` · ${item.result.updated.toLocaleString()} updated`}
                           {item.result.errors > 0 && (
                             <span className="text-destructive">
                               {' '}

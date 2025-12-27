@@ -1035,7 +1035,10 @@ export interface PlexAvailableServersResponse {
 // Maintenance Job Types
 // =============================================================================
 
-export type MaintenanceJobType = 'normalize_players' | 'normalize_countries' | 'fix_imported_progress';
+export type MaintenanceJobType =
+  | 'normalize_players'
+  | 'normalize_countries'
+  | 'fix_imported_progress';
 
 export type MaintenanceJobStatus = 'idle' | 'running' | 'complete' | 'error';
 

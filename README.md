@@ -75,7 +75,7 @@ Tautulli and Jellystat are platform-locked equivalents—Plex-only vs Jellyfin/E
 The supervised image bundles TimescaleDB, Redis, and Tracearr in a single container. No external database required. Secrets are auto-generated on first run.
 
 ```bash
-docker compose -f docker/docker-compose.supervised.yml up -d
+docker compose -f docker/examples/docker-compose.supervised-example.yml up -d
 ```
 
 Open `http://localhost:3000` and connect your Plex, Jellyfin, or Emby server.
@@ -89,7 +89,7 @@ If you already have TimescaleDB/PostgreSQL and Redis, or prefer managing service
 cp docker/.env.example docker/.env
 # Edit docker/.env with your secrets (generate with: openssl rand -hex 32)
 
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f docker/examples/docker-compose.example.yml up -d
 ```
 
 ### Docker Tags
@@ -214,6 +214,7 @@ Contributions welcome. Please:
 Check the [issues](https://github.com/connorgallopo/Tracearr/issues) for things to work on.
 
 ### Development with VS Code
+
 Use the included `.vscode/launch.json` to debug both server and web apps directly from VS Code.
 
 Run `pnpm dev` in a terminal to start both apps, then use the "Debug All" configuration to attach the debugger.

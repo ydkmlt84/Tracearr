@@ -55,7 +55,11 @@ const VIOLATION_DEDUP_WINDOW_MS = 5 * TIME_MS.MINUTE;
 const MULTI_SESSION_RULES: RuleType[] = ['concurrent_streams', 'simultaneous_locations'];
 
 // Rules that are single-session (need same-session deduplication)
-const SINGLE_SESSION_RULES: RuleType[] = ['impossible_travel', 'device_velocity', 'geo_restriction'];
+const SINGLE_SESSION_RULES: RuleType[] = [
+  'impossible_travel',
+  'device_velocity',
+  'geo_restriction',
+];
 
 // ============================================================================
 // Shared Deduplication Logic
@@ -190,7 +194,12 @@ export async function isDuplicateViolation(
       )
     );
 
-  return checkDuplicateInViolations(recentViolations, ruleType, triggeringSessionId, relatedSessionIds);
+  return checkDuplicateInViolations(
+    recentViolations,
+    ruleType,
+    triggeringSessionId,
+    relatedSessionIds
+  );
 }
 
 /**
@@ -224,7 +233,9 @@ export async function isDuplicateViolationInTransaction(
   // This prevents the race condition where both transactions read empty table and insert
   // violations with different sessionIds (which bypasses both SERIALIZABLE and unique constraint)
   if (MULTI_SESSION_RULES.includes(ruleType)) {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${serverUserId} || '::' || ${ruleType}))`);
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${serverUserId} || '::' || ${ruleType}))`
+    );
   }
 
   const windowStart = new Date(Date.now() - VIOLATION_DEDUP_WINDOW_MS);
@@ -248,7 +259,12 @@ export async function isDuplicateViolationInTransaction(
     );
 
   // P1-6: Use shared deduplication logic
-  return checkDuplicateInViolations(recentViolations, ruleType, triggeringSessionId, relatedSessionIds);
+  return checkDuplicateInViolations(
+    recentViolations,
+    ruleType,
+    triggeringSessionId,
+    relatedSessionIds
+  );
 }
 
 // ============================================================================

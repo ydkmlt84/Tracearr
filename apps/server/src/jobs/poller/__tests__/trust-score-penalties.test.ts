@@ -58,7 +58,10 @@ describe('Trust Score Penalties', () => {
       // device_velocity: warning (10)
       // concurrent_streams: low (5)
       const allRuleViolations: ViolationSeverity[] = ['high', 'high', 'warning', 'warning', 'low'];
-      const totalPenalty = allRuleViolations.reduce((sum, sev) => sum + getTrustScorePenalty(sev), 0);
+      const totalPenalty = allRuleViolations.reduce(
+        (sum, sev) => sum + getTrustScorePenalty(sev),
+        0
+      );
 
       // Total: 65 points from a single session
       expect(totalPenalty).toBe(65);

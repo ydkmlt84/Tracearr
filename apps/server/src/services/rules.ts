@@ -33,8 +33,7 @@ export class RuleEngine {
    */
   private isLocalNetworkSession(session: Session): boolean {
     return (
-      session.geoCountry === LOCAL_NETWORK_COUNTRY ||
-      geoipService.isPrivateIP(session.ipAddress)
+      session.geoCountry === LOCAL_NETWORK_COUNTRY || geoipService.isPrivateIP(session.ipAddress)
     );
   }
 
@@ -379,7 +378,11 @@ export class RuleEngine {
       [];
 
     // Skip local/private IPs - they have no meaningful geo location
-    if (!session.geoCountry || session.geoCountry === LOCAL_NETWORK_COUNTRY || countries.length === 0) {
+    if (
+      !session.geoCountry ||
+      session.geoCountry === LOCAL_NETWORK_COUNTRY ||
+      countries.length === 0
+    ) {
       return { violated: false, severity: 'low', data: {} };
     }
 

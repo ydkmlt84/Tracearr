@@ -11,7 +11,11 @@
  */
 
 import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
-import type { MaintenanceJobProgress, MaintenanceJobResult, MaintenanceJobType } from '@tracearr/shared';
+import type {
+  MaintenanceJobProgress,
+  MaintenanceJobResult,
+  MaintenanceJobType,
+} from '@tracearr/shared';
 import { WS_EVENTS } from '@tracearr/shared';
 import { sql, isNotNull, or, and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -160,7 +164,9 @@ async function processMaintenanceJob(job: Job<MaintenanceJobData>): Promise<Main
  * Updates the `device` and `platform` columns based on the existing
  * `product` and `playerName` values using the platformNormalizer utility.
  */
-async function processNormalizePlayersJob(job: Job<MaintenanceJobData>): Promise<MaintenanceJobResult> {
+async function processNormalizePlayersJob(
+  job: Job<MaintenanceJobData>
+): Promise<MaintenanceJobResult> {
   const startTime = Date.now();
   const pubSubService = getPubSubService();
   const BATCH_SIZE = 500;
@@ -219,7 +225,7 @@ async function processNormalizePlayersJob(job: Job<MaintenanceJobData>): Promise
       };
     }
 
-    let lastId = '';  // Cursor for pagination
+    let lastId = ''; // Cursor for pagination
     let totalProcessed = 0;
     let totalUpdated = 0;
     let totalSkipped = 0;
@@ -284,8 +290,7 @@ async function processNormalizePlayersJob(job: Job<MaintenanceJobData>): Promise
 
           // Check if update is needed
           const needsUpdate =
-            normalized.device !== session.device ||
-            normalizedPlatform !== session.platform;
+            normalized.device !== session.device || normalizedPlatform !== session.platform;
 
           if (needsUpdate) {
             updates.push({
@@ -390,7 +395,9 @@ async function processNormalizePlayersJob(job: Job<MaintenanceJobData>): Promise
  * Converts full country names (e.g., "United States") to ISO 3166-1 alpha-2 codes (e.g., "US").
  * This fixes historical data from before the system was updated to store country codes.
  */
-async function processNormalizeCountriesJob(job: Job<MaintenanceJobData>): Promise<MaintenanceJobResult> {
+async function processNormalizeCountriesJob(
+  job: Job<MaintenanceJobData>
+): Promise<MaintenanceJobResult> {
   const startTime = Date.now();
   const pubSubService = getPubSubService();
   const BATCH_SIZE = 500;
@@ -424,10 +431,7 @@ async function processNormalizeCountriesJob(job: Job<MaintenanceJobData>): Promi
       .from(sessions)
       .where(
         or(
-          and(
-            isNotNull(sessions.geoCountry),
-            sql`length(${sessions.geoCountry}) > 2`
-          ),
+          and(isNotNull(sessions.geoCountry), sql`length(${sessions.geoCountry}) > 2`),
           sql`lower(${sessions.geoCity}) = 'local'`
         )
       );
@@ -454,7 +458,7 @@ async function processNormalizeCountriesJob(job: Job<MaintenanceJobData>): Promi
       };
     }
 
-    let lastId = '';  // Cursor for pagination
+    let lastId = ''; // Cursor for pagination
     let totalProcessed = 0;
     let totalUpdated = 0;
     let totalSkipped = 0;
@@ -464,10 +468,7 @@ async function processNormalizeCountriesJob(job: Job<MaintenanceJobData>): Promi
       // Fetch batch of sessions that need geo normalization
       // Use cursor-based pagination (id > lastId) to ensure we process each record exactly once
       const whereCondition = or(
-        and(
-          isNotNull(sessions.geoCountry),
-          sql`length(${sessions.geoCountry}) > 2`
-        ),
+        and(isNotNull(sessions.geoCountry), sql`length(${sessions.geoCountry}) > 2`),
         sql`lower(${sessions.geoCity}) = 'local'`
       );
 
@@ -515,7 +516,10 @@ async function processNormalizeCountriesJob(job: Job<MaintenanceJobData>): Promi
           }
 
           // Standardize "Local" variants to "Local Network"
-          if (currentCountry.toLowerCase() === 'local' || currentCountry.toLowerCase() === 'local network') {
+          if (
+            currentCountry.toLowerCase() === 'local' ||
+            currentCountry.toLowerCase() === 'local network'
+          ) {
             if (currentCountry !== 'Local Network') {
               updates.push({
                 id: session.id,
@@ -627,7 +631,9 @@ async function processNormalizeCountriesJob(job: Job<MaintenanceJobData>): Promi
  * that have durationMs but null progress values. Uses the externalSessionId to
  * identify imported sessions.
  */
-async function processFixImportedProgressJob(job: Job<MaintenanceJobData>): Promise<MaintenanceJobResult> {
+async function processFixImportedProgressJob(
+  job: Job<MaintenanceJobData>
+): Promise<MaintenanceJobResult> {
   const startTime = Date.now();
   const pubSubService = getPubSubService();
   const BATCH_SIZE = 500;
@@ -664,10 +670,7 @@ async function processFixImportedProgressJob(job: Job<MaintenanceJobData>): Prom
         and(
           isNotNull(sessions.externalSessionId),
           isNotNull(sessions.durationMs),
-          or(
-            sql`${sessions.progressMs} IS NULL`,
-            sql`${sessions.totalDurationMs} IS NULL`
-          )
+          or(sql`${sessions.progressMs} IS NULL`, sql`${sessions.totalDurationMs} IS NULL`)
         )
       );
 
@@ -693,7 +696,7 @@ async function processFixImportedProgressJob(job: Job<MaintenanceJobData>): Prom
       };
     }
 
-    let lastId = '';  // Cursor for pagination
+    let lastId = ''; // Cursor for pagination
     let totalProcessed = 0;
     let totalUpdated = 0;
     let totalSkipped = 0;
@@ -705,10 +708,7 @@ async function processFixImportedProgressJob(job: Job<MaintenanceJobData>): Prom
       const whereCondition = and(
         isNotNull(sessions.externalSessionId),
         isNotNull(sessions.durationMs),
-        or(
-          sql`${sessions.progressMs} IS NULL`,
-          sql`${sessions.totalDurationMs} IS NULL`
-        )
+        or(sql`${sessions.progressMs} IS NULL`, sql`${sessions.totalDurationMs} IS NULL`)
       );
 
       const batch = await db
@@ -949,21 +949,23 @@ export async function getMaintenanceQueueStats(): Promise<{
 /**
  * Get recent job history
  */
-export async function getMaintenanceJobHistory(limit: number = 10): Promise<Array<{
-  jobId: string;
-  type: MaintenanceJobType;
-  state: string;
-  createdAt: number;
-  finishedAt?: number;
-  result?: MaintenanceJobResult;
-}>> {
+export async function getMaintenanceJobHistory(limit: number = 10): Promise<
+  Array<{
+    jobId: string;
+    type: MaintenanceJobType;
+    state: string;
+    createdAt: number;
+    finishedAt?: number;
+    result?: MaintenanceJobResult;
+  }>
+> {
   if (!maintenanceQueue) {
     return [];
   }
 
   const jobs = await maintenanceQueue.getJobs(['completed', 'failed'], 0, limit);
 
-  return jobs.map(job => ({
+  return jobs.map((job) => ({
     jobId: job.id ?? 'unknown',
     type: job.data.type,
     state: job.finishedOn ? (job.failedReason ? 'failed' : 'completed') : 'unknown',

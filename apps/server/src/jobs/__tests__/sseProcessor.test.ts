@@ -74,11 +74,7 @@ vi.mock('../poller/sessionLifecycle.js', () => ({
 }));
 
 // Import after mocking
-import {
-  initializeSSEProcessor,
-  startSSEProcessor,
-  stopSSEProcessor,
-} from '../sseProcessor.js';
+import { initializeSSEProcessor, startSSEProcessor, stopSSEProcessor } from '../sseProcessor.js';
 
 // Mock cache and pubsub services
 const mockCacheService = {
@@ -104,10 +100,7 @@ describe('SSE Processor - Server Health Notifications', () => {
     mockSseManager.removeAllListeners();
 
     // Initialize and start the processor
-    initializeSSEProcessor(
-      mockCacheService as never,
-      mockPubSubService as never
-    );
+    initializeSSEProcessor(mockCacheService as never, mockPubSubService as never);
     startSSEProcessor();
   });
 

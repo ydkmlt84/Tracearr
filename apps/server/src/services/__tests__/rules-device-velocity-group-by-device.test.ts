@@ -41,11 +41,7 @@ describe('RuleEngine - Device Velocity Group By Device (Issue #92)', () => {
         createSessionWithDevice(serverUserId, 'shield-123', '192.168.1.102', 3),
       ];
 
-      const currentSession = createSessionWithDevice(
-        serverUserId,
-        'shield-123',
-        '192.168.1.103'
-      );
+      const currentSession = createSessionWithDevice(serverUserId, 'shield-123', '192.168.1.103');
 
       const rule = createMockRule('device_velocity', {
         params: { maxIps: 3, windowHours: 24, groupByDevice: false },
@@ -67,11 +63,7 @@ describe('RuleEngine - Device Velocity Group By Device (Issue #92)', () => {
         createSessionWithDevice(serverUserId, 'shield-123', '192.168.1.102', 3),
       ];
 
-      const currentSession = createSessionWithDevice(
-        serverUserId,
-        'shield-123',
-        '192.168.1.103'
-      );
+      const currentSession = createSessionWithDevice(serverUserId, 'shield-123', '192.168.1.103');
 
       const rule = createMockRule('device_velocity', {
         params: { maxIps: 3, windowHours: 24, groupByDevice: true },
@@ -89,11 +81,7 @@ describe('RuleEngine - Device Velocity Group By Device (Issue #92)', () => {
         createSessionWithDevice(serverUserId, 'laptop-789', '192.168.1.102', 3),
       ];
 
-      const currentSession = createSessionWithDevice(
-        serverUserId,
-        'tablet-012',
-        '192.168.1.103'
-      );
+      const currentSession = createSessionWithDevice(serverUserId, 'tablet-012', '192.168.1.103');
 
       const rule = createMockRule('device_velocity', {
         params: { maxIps: 3, windowHours: 24, groupByDevice: true },
@@ -159,11 +147,7 @@ describe('RuleEngine - Device Velocity Group By Device (Issue #92)', () => {
         createSessionWithDevice(serverUserId, 'laptop-789', '10.0.0.5', 3),
       ];
 
-      const currentSession = createSessionWithDevice(
-        serverUserId,
-        'tablet-012',
-        '172.16.0.1'
-      );
+      const currentSession = createSessionWithDevice(serverUserId, 'tablet-012', '172.16.0.1');
 
       const rule = createMockRule('device_velocity', {
         params: { maxIps: 2, windowHours: 24, groupByDevice: true, excludePrivateIps: true },
@@ -225,11 +209,7 @@ describe('RuleEngine - Device Velocity Group By Device (Issue #92)', () => {
         createSessionWithDevice(serverUserId, 'shield-123', '192.168.1.101', 2),
       ];
 
-      const currentSession = createSessionWithDevice(
-        serverUserId,
-        'shield-123',
-        '192.168.1.102'
-      );
+      const currentSession = createSessionWithDevice(serverUserId, 'shield-123', '192.168.1.102');
 
       const rule = createMockRule('device_velocity', {
         params: { maxIps: 2, windowHours: 24 },

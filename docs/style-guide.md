@@ -61,14 +61,14 @@ The primary accent color is derived from a single `--accent-hue` CSS variable:
 
 ### 3.2 Brand Colors (Derived from Accent)
 
-| Name      | HSL                            | Usage                  |
-| --------- | ------------------------------ | ---------------------- |
-| Cyan Core | `hsl(--accent-hue 80% 50%)`    | Primary accent, CTA    |
-| Cyan Deep | `hsl(--accent-hue 86% 42%)`    | Hover states, gradient |
-| Cyan Dark | `hsl(--accent-hue 85% 31%)`    | Shadows, outlines      |
-| Blue Core | `hsl(213 62% 11%)` / `#0B1A2E` | Legacy dark cards      |
-| Blue Steel| `hsl(213 47% 17%)` / `#162840` | Legacy panels          |
-| Blue Soft | `hsl(212 49% 24%)` / `#1E3A5C` | Legacy hover states    |
+| Name       | HSL                            | Usage                  |
+| ---------- | ------------------------------ | ---------------------- |
+| Cyan Core  | `hsl(--accent-hue 80% 50%)`    | Primary accent, CTA    |
+| Cyan Deep  | `hsl(--accent-hue 86% 42%)`    | Hover states, gradient |
+| Cyan Dark  | `hsl(--accent-hue 85% 31%)`    | Shadows, outlines      |
+| Blue Core  | `hsl(213 62% 11%)` / `#0B1A2E` | Legacy dark cards      |
+| Blue Steel | `hsl(213 47% 17%)` / `#162840` | Legacy panels          |
+| Blue Soft  | `hsl(212 49% 24%)` / `#1E3A5C` | Legacy hover states    |
 
 ---
 
@@ -80,20 +80,20 @@ Uses **shadcn/ui neutral** color scheme with accent-derived primary colors.
 
 **Backgrounds**
 
-| Token        | HSL               | Approx Hex | Usage            |
-| ------------ | ----------------- | ---------- | ---------------- |
-| background   | `240 10% 4%`      | `#09090b`  | Main background  |
-| card         | `240 10% 4%`      | `#09090b`  | Cards            |
-| popover      | `240 10% 4%`      | `#09090b`  | Dropdowns/modals |
-| muted        | `240 4% 16%`      | `#27272a`  | Subtle surfaces  |
-| secondary    | `240 4% 16%`      | `#27272a`  | Secondary fills  |
+| Token      | HSL          | Approx Hex | Usage            |
+| ---------- | ------------ | ---------- | ---------------- |
+| background | `240 10% 4%` | `#09090b`  | Main background  |
+| card       | `240 10% 4%` | `#09090b`  | Cards            |
+| popover    | `240 10% 4%` | `#09090b`  | Dropdowns/modals |
+| muted      | `240 4% 16%` | `#27272a`  | Subtle surfaces  |
+| secondary  | `240 4% 16%` | `#27272a`  | Secondary fills  |
 
 **Text**
 
-| Token              | HSL           | Approx Hex | Usage       |
-| ------------------ | ------------- | ---------- | ----------- |
-| foreground         | `0 0% 98%`    | `#fafafa`  | Primary     |
-| muted-foreground   | `240 5% 65%`  | `#a1a1aa`  | Secondary   |
+| Token            | HSL          | Approx Hex | Usage     |
+| ---------------- | ------------ | ---------- | --------- |
+| foreground       | `0 0% 98%`   | `#fafafa`  | Primary   |
+| muted-foreground | `240 5% 65%` | `#a1a1aa`  | Secondary |
 
 **Borders & Inputs**
 
@@ -105,21 +105,21 @@ Uses **shadcn/ui neutral** color scheme with accent-derived primary colors.
 
 **Accent Colors**
 
-| Token              | HSL                       | Usage              |
-| ------------------ | ------------------------- | ------------------ |
-| primary            | `--accent-hue 80% 50%`    | CTAs, links        |
-| primary-foreground | `240 6% 10%`              | Text on primary    |
-| accent             | `240 4% 16%`              | Hover backgrounds  |
-| accent-foreground  | `0 0% 98%`                | Text on accent     |
+| Token              | HSL                    | Usage             |
+| ------------------ | ---------------------- | ----------------- |
+| primary            | `--accent-hue 80% 50%` | CTAs, links       |
+| primary-foreground | `240 6% 10%`           | Text on primary   |
+| accent             | `240 4% 16%`           | Hover backgrounds |
+| accent-foreground  | `0 0% 98%`             | Text on accent    |
 
 **Semantic Colors**
 
-| Token                  | HSL           | Usage         |
-| ---------------------- | ------------- | ------------- |
-| destructive            | `0 62% 50%`   | Errors, delete|
-| destructive-foreground | `0 0% 98%`    | Text on red   |
-| success (custom)       | `142 76% 36%` | Success states|
-| warning (custom)       | `38 92% 50%`  | Warnings      |
+| Token                  | HSL           | Usage          |
+| ---------------------- | ------------- | -------------- |
+| destructive            | `0 62% 50%`   | Errors, delete |
+| destructive-foreground | `0 0% 98%`    | Text on red    |
+| success (custom)       | `142 76% 36%` | Success states |
+| warning (custom)       | `38 92% 50%`  | Warnings       |
 
 ---
 
@@ -144,10 +144,10 @@ Uses **shadcn/ui neutral** color scheme with darker accent for readability.
 
 **Accent Colors (Darker for Contrast)**
 
-| Token              | HSL                    | Usage            |
-| ------------------ | ---------------------- | ---------------- |
-| primary            | `--accent-hue 85% 38%` | CTAs, links      |
-| primary-foreground | `0 0% 100%`            | White text       |
+| Token              | HSL                    | Usage       |
+| ------------------ | ---------------------- | ----------- |
+| primary            | `--accent-hue 85% 38%` | CTAs, links |
+| primary-foreground | `0 0% 100%`            | White text  |
 
 ---
 
@@ -157,33 +157,33 @@ Charts use a consistent 5-color palette across themes:
 
 ### Dark Mode
 
-| Token   | HSL                      | Usage                |
-| ------- | ------------------------ | -------------------- |
-| chart-1 | `--accent-hue 80% 50%`   | Primary series       |
-| chart-2 | `--accent-hue 70% 60%`   | Secondary series     |
-| chart-3 | `197 37% 50%`            | Tertiary (neutral)   |
-| chart-4 | `43 80% 55%`             | Warning/amber series |
-| chart-5 | `0 75% 55%`              | Danger/red series    |
+| Token   | HSL                    | Usage                |
+| ------- | ---------------------- | -------------------- |
+| chart-1 | `--accent-hue 80% 50%` | Primary series       |
+| chart-2 | `--accent-hue 70% 60%` | Secondary series     |
+| chart-3 | `197 37% 50%`          | Tertiary (neutral)   |
+| chart-4 | `43 80% 55%`           | Warning/amber series |
+| chart-5 | `0 75% 55%`            | Danger/red series    |
 
 ### Light Mode
 
-| Token   | HSL                      | Usage                |
-| ------- | ------------------------ | -------------------- |
-| chart-1 | `--accent-hue 85% 38%`   | Primary series       |
-| chart-2 | `--accent-hue 70% 50%`   | Secondary series     |
-| chart-3 | `197 37% 24%`            | Tertiary (neutral)   |
-| chart-4 | `43 90% 45%`             | Warning/amber series |
-| chart-5 | `0 72% 51%`              | Danger/red series    |
+| Token   | HSL                    | Usage                |
+| ------- | ---------------------- | -------------------- |
+| chart-1 | `--accent-hue 85% 38%` | Primary series       |
+| chart-2 | `--accent-hue 70% 50%` | Secondary series     |
+| chart-3 | `197 37% 24%`          | Tertiary (neutral)   |
+| chart-4 | `43 90% 45%`           | Warning/amber series |
+| chart-5 | `0 72% 51%`            | Danger/red series    |
 
 ---
 
 ## 6. Icon Colors
 
-| Token       | Dark Mode HSL        | Light Mode HSL       | Usage         |
-| ----------- | -------------------- | -------------------- | ------------- |
-| icon        | `240 5% 65%`         | `240 4% 46%`         | Default state |
+| Token       | Dark Mode HSL          | Light Mode HSL         | Usage         |
+| ----------- | ---------------------- | ---------------------- | ------------- |
+| icon        | `240 5% 65%`           | `240 4% 46%`           | Default state |
 | icon-active | `--accent-hue 80% 50%` | `--accent-hue 85% 38%` | Active/hover  |
-| icon-danger | `0 100% 65%`         | `0 72% 51%`          | Danger states |
+| icon-danger | `0 100% 65%`           | `0 72% 51%`            | Danger states |
 
 **Icon Guidelines:**
 
@@ -199,23 +199,23 @@ The sidebar uses slightly elevated backgrounds for visual separation:
 
 ### Dark Mode
 
-| Token                    | HSL                    | Usage            |
-| ------------------------ | ---------------------- | ---------------- |
-| sidebar                  | `240 6% 10%`           | Background       |
-| sidebar-foreground       | `0 0% 98%`             | Text             |
-| sidebar-primary          | `--accent-hue 80% 50%` | Active items     |
-| sidebar-primary-foreground | `240 6% 10%`         | Text on active   |
-| sidebar-accent           | `240 4% 16%`           | Hover background |
-| sidebar-border           | `240 4% 16%`           | Dividers         |
+| Token                      | HSL                    | Usage            |
+| -------------------------- | ---------------------- | ---------------- |
+| sidebar                    | `240 6% 10%`           | Background       |
+| sidebar-foreground         | `0 0% 98%`             | Text             |
+| sidebar-primary            | `--accent-hue 80% 50%` | Active items     |
+| sidebar-primary-foreground | `240 6% 10%`           | Text on active   |
+| sidebar-accent             | `240 4% 16%`           | Hover background |
+| sidebar-border             | `240 4% 16%`           | Dividers         |
 
 ### Light Mode
 
-| Token                    | HSL                    | Usage            |
-| ------------------------ | ---------------------- | ---------------- |
-| sidebar                  | `0 0% 98%`             | Background       |
-| sidebar-foreground       | `240 6% 10%`           | Text             |
-| sidebar-primary          | `--accent-hue 85% 38%` | Active items     |
-| sidebar-primary-foreground | `0 0% 100%`          | Text on active   |
+| Token                      | HSL                    | Usage          |
+| -------------------------- | ---------------------- | -------------- |
+| sidebar                    | `0 0% 98%`             | Background     |
+| sidebar-foreground         | `240 6% 10%`           | Text           |
+| sidebar-primary            | `--accent-hue 85% 38%` | Active items   |
+| sidebar-primary-foreground | `0 0% 100%`            | Text on active |
 
 ---
 
@@ -262,13 +262,13 @@ Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-se
 
 ### Border Radius
 
-| Token     | Value                    |
-| --------- | ------------------------ |
-| radius    | `0.5rem` (base)          |
-| radius-sm | `calc(radius - 4px)`     |
-| radius-md | `calc(radius - 2px)`     |
-| radius-lg | `radius`                 |
-| radius-xl | `calc(radius + 4px)`     |
+| Token     | Value                |
+| --------- | -------------------- |
+| radius    | `0.5rem` (base)      |
+| radius-sm | `calc(radius - 4px)` |
+| radius-md | `calc(radius - 2px)` |
+| radius-lg | `radius`             |
+| radius-xl | `calc(radius + 4px)` |
 
 ---
 

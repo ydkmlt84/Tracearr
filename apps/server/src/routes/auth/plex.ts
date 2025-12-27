@@ -54,7 +54,13 @@ const CONNECTION_TEST_TIMEOUT = 3000;
  * Test connections to a Plex server and return results with reachability info
  */
 async function testServerConnections(
-  connections: Array<{ uri: string; local: boolean; address: string; port: number; relay: boolean }>,
+  connections: Array<{
+    uri: string;
+    local: boolean;
+    address: string;
+    port: number;
+    relay: boolean;
+  }>,
   token: string
 ): Promise<PlexDiscoveredConnection[]> {
   const results = await Promise.all(

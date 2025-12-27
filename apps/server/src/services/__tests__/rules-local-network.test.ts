@@ -21,7 +21,9 @@ import { createMockSession, createMockRule, TEST_LOCATIONS } from '../../test/fi
  * Helper to create a session mimicking local network access
  * (private IP, no geo coordinates, geoCountry='Local Network')
  */
-function createLocalNetworkSession(overrides: Partial<Parameters<typeof createMockSession>[0]> = {}) {
+function createLocalNetworkSession(
+  overrides: Partial<Parameters<typeof createMockSession>[0]> = {}
+) {
   return createMockSession({
     ipAddress: '192.168.1.100',
     geoCity: null,

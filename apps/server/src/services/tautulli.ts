@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { TautulliImportProgress, TautulliImportResult } from '@tracearr/shared';
 import { db } from '../db/client.js';
-import { settings, type sessions } from '../db/schema.js';
+import { settings, sessions } from '../db/schema.js';
 import { refreshAggregates } from '../db/timescale.js';
 import { geoipService } from './geoip.js';
 import type { PubSubService } from './cache.js';
@@ -36,7 +36,6 @@ export const numberOrEmptyString = z.union([z.number(), z.literal('')]);
 export const numberOrEmptyStringOrNull = z.union([z.number(), z.literal(''), z.null()]);
 
 // Zod schemas for runtime validation of Tautulli API responses
-// Based on actual API response from http://192.168.1.32:8181
 // Exported for testing
 export const TautulliHistoryRecordSchema = z.object({
   // IDs - can be null for active sessions
@@ -149,6 +148,15 @@ export class TautulliService {
   private apiKey: string;
 
   constructor(url: string, apiKey: string) {
+    // Validate URL format
+    try {
+      new URL(url);
+    } catch {
+      throw new Error('Invalid Tautulli URL format');
+    }
+    if (!apiKey || apiKey.length < 1) {
+      throw new Error('Tautulli API key is required');
+    }
     this.baseUrl = url.replace(/\/$/, '');
     this.apiKey = apiKey;
   }
@@ -239,7 +247,8 @@ export class TautulliService {
     try {
       const result = await this.request<{ response: { result: string } }>('arnold');
       return result.response.result === 'success';
-    } catch {
+    } catch (err) {
+      console.warn('[Tautulli] Connection test failed:', err instanceof Error ? err.message : err);
       return false;
     }
   }
@@ -306,6 +315,7 @@ export class TautulliService {
         success: false,
         imported: 0,
         updated: 0,
+        linked: 0,
         skipped: 0,
         errors: 0,
         message: 'Tautulli is not configured. Please add URL and API key in Settings.',
@@ -321,6 +331,7 @@ export class TautulliService {
         success: false,
         imported: 0,
         updated: 0,
+        linked: 0,
         skipped: 0,
         errors: 0,
         message: 'Failed to connect to Tautulli. Please check URL and API key.',
@@ -359,9 +370,9 @@ export class TautulliService {
     // Convert to number keys for Tautulli (Plex uses numeric user IDs)
     const userMap = new Map<number, string>();
     for (const [externalId, userId] of userMapRaw) {
-      const plexUserId = parseInt(externalId, 10);
-      if (!isNaN(plexUserId)) {
-        userMap.set(plexUserId, userId);
+      // Strict numeric validation to prevent parseInt('123abc') -> 123
+      if (/^\d+$/.test(externalId)) {
+        userMap.set(parseInt(externalId, 10), userId);
       }
     }
 
@@ -374,6 +385,10 @@ export class TautulliService {
 
     // Track externalSessionIds we've already inserted in THIS import run
     const insertedThisRun = new Set<string>();
+
+    // Track sessions that need referenceId linking (child → parent external IDs)
+    // group_ids from Tautulli contains comma-separated session IDs in the same viewing chain
+    const sessionGroupLinks: Array<{ childExternalId: string; parentExternalId: string }> = [];
 
     // Track skipped users using shared module
     const skippedUserTracker = createSkippedUserTracker();
@@ -516,6 +531,18 @@ export class TautulliService {
               progress.skippedRecords++;
               progress.duplicateRecords++;
             }
+
+            // Still collect group links for existing records (to fix historical data)
+            if (record.group_count && record.group_count > 1 && record.group_ids) {
+              const groupIds = record.group_ids.split(',').map((id) => id.trim());
+              const parentExternalId = groupIds[0];
+              if (parentExternalId && parentExternalId !== referenceIdStr) {
+                sessionGroupLinks.push({
+                  childExternalId: referenceIdStr,
+                  parentExternalId,
+                });
+              }
+            }
             continue;
           }
 
@@ -562,6 +589,18 @@ export class TautulliService {
                 skipped++;
                 progress.skippedRecords++;
                 progress.duplicateRecords++;
+              }
+
+              // Still collect group links for existing records (to fix historical data)
+              if (record.group_count && record.group_count > 1 && record.group_ids) {
+                const groupIds = record.group_ids.split(',').map((id) => id.trim());
+                const parentExternalId = groupIds[0];
+                if (parentExternalId && parentExternalId !== referenceIdStr) {
+                  sessionGroupLinks.push({
+                    childExternalId: referenceIdStr,
+                    parentExternalId,
+                  });
+                }
               }
               continue;
             }
@@ -647,6 +686,21 @@ export class TautulliService {
             bitrate: null,
           });
 
+          // Track session grouping for referenceId linking
+          // group_ids contains comma-separated Tautulli row IDs (e.g., "12351,12362")
+          // The first ID is the "parent" session in the resume chain
+          if (record.group_count && record.group_count > 1 && record.group_ids) {
+            const groupIds = record.group_ids.split(',').map((id) => id.trim());
+            const parentExternalId = groupIds[0];
+            // Only link if this session is NOT the parent (avoid self-reference)
+            if (parentExternalId && parentExternalId !== referenceIdStr) {
+              sessionGroupLinks.push({
+                childExternalId: referenceIdStr,
+                parentExternalId,
+              });
+            }
+          }
+
           imported++;
           progress.importedRecords++;
         } catch (error) {
@@ -672,6 +726,44 @@ export class TautulliService {
     // Final flush for any remaining records
     await flushBatches();
 
+    // Link sessions using group_ids data (referenceId linking pass)
+    let linkedSessions = 0;
+    if (sessionGroupLinks.length > 0) {
+      progress.message = `Linking ${sessionGroupLinks.length} resume sessions...`;
+      publishProgress(progress);
+
+      // Get unique parent external IDs to lookup
+      const parentExternalIds = [...new Set(sessionGroupLinks.map((l) => l.parentExternalId))];
+      const parentMap = await queryExistingByExternalIds(serverId, parentExternalIds);
+
+      // Also get child external IDs to find their UUIDs for updating
+      const childExternalIds = sessionGroupLinks.map((l) => l.childExternalId);
+      const childMap = await queryExistingByExternalIds(serverId, childExternalIds);
+
+      // Batch update child sessions with their referenceId
+      const UPDATE_CHUNK_SIZE = 50;
+      for (let i = 0; i < sessionGroupLinks.length; i += UPDATE_CHUNK_SIZE) {
+        const chunk = sessionGroupLinks.slice(i, i + UPDATE_CHUNK_SIZE);
+        await Promise.all(
+          chunk.map(async ({ childExternalId, parentExternalId }) => {
+            const parent = parentMap.get(parentExternalId);
+            const child = childMap.get(childExternalId);
+            if (parent && child) {
+              await db
+                .update(sessions)
+                .set({ referenceId: parent.id })
+                .where(eq(sessions.id, child.id));
+              linkedSessions++;
+            }
+          })
+        );
+      }
+
+      if (linkedSessions > 0) {
+        console.log(`[Import] Linked ${linkedSessions} sessions via group_ids`);
+      }
+    }
+
     // Refresh TimescaleDB aggregates so imported data appears in stats immediately
     progress.message = 'Refreshing aggregates...';
     publishProgress(progress);
@@ -685,6 +777,7 @@ export class TautulliService {
     const parts: string[] = [];
     if (imported > 0) parts.push(`${imported} new`);
     if (updated > 0) parts.push(`${updated} updated`);
+    if (linkedSessions > 0) parts.push(`${linkedSessions} linked`);
     if (skipped > 0) parts.push(`${skipped} skipped`);
     if (errors > 0) parts.push(`${errors} errors`);
 
@@ -711,6 +804,7 @@ export class TautulliService {
       success: true,
       imported,
       updated,
+      linked: linkedSessions,
       skipped,
       errors,
       message,

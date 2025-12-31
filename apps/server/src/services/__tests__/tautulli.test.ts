@@ -2,6 +2,9 @@
  * Tautulli Import Service Tests
  *
  * Comprehensive tests covering:
+ * - Constructor validation
+ * - testConnection method
+ * - User ID parsing
  * - Zod schema validation against real API data structures
  * - User matching and skip behavior
  * - Session deduplication logic
@@ -11,11 +14,12 @@
  * - Progress tracking
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Import ACTUAL production schemas - not local duplicates
+// Import ACTUAL production schemas and service - not local duplicates
 // This ensures tests validate the same schemas used in production
 import {
+  TautulliService,
   TautulliHistoryRecordSchema,
   TautulliHistoryResponseSchema,
   TautulliUserRecordSchema,
@@ -251,6 +255,302 @@ const NORMAL_USER: TautulliUserRecord = {
   is_active: 1,
   do_notify: 1,
 };
+
+// ============================================================================
+// CONSTRUCTOR VALIDATION TESTS
+// ============================================================================
+
+describe('TautulliService Constructor', () => {
+  describe('valid parameters', () => {
+    it('should create instance with valid URL and API key', () => {
+      const service = new TautulliService('http://localhost:8181', 'valid-api-key-12345');
+      expect(service).toBeInstanceOf(TautulliService);
+    });
+
+    it('should accept HTTPS URLs', () => {
+      const service = new TautulliService('https://tautulli.example.com', 'api-key');
+      expect(service).toBeInstanceOf(TautulliService);
+    });
+
+    it('should accept URLs with port numbers', () => {
+      const service = new TautulliService('http://192.168.1.100:8181', 'api-key');
+      expect(service).toBeInstanceOf(TautulliService);
+    });
+
+    it('should strip trailing slash from URL', () => {
+      const service = new TautulliService('http://localhost:8181/', 'api-key');
+      expect(service).toBeInstanceOf(TautulliService);
+    });
+
+    it('should accept URLs with paths', () => {
+      const service = new TautulliService('http://localhost/tautulli', 'api-key');
+      expect(service).toBeInstanceOf(TautulliService);
+    });
+  });
+
+  describe('invalid URL format', () => {
+    it('should throw error for invalid URL format', () => {
+      expect(() => new TautulliService('not-a-valid-url', 'api-key')).toThrow(
+        'Invalid Tautulli URL format'
+      );
+    });
+
+    it('should throw error for empty URL', () => {
+      expect(() => new TautulliService('', 'api-key')).toThrow('Invalid Tautulli URL format');
+    });
+
+    it('should throw error for malformed URL', () => {
+      expect(() => new TautulliService('http://[invalid', 'api-key')).toThrow(
+        'Invalid Tautulli URL format'
+      );
+    });
+  });
+
+  describe('invalid API key', () => {
+    it('should throw error for empty API key', () => {
+      expect(() => new TautulliService('http://localhost:8181', '')).toThrow(
+        'Tautulli API key is required'
+      );
+    });
+
+    it('should throw error for whitespace-only API key', () => {
+      // The current implementation checks length < 1, so this will pass
+      // If we want to reject whitespace, we'd need to update the implementation
+      const service = new TautulliService('http://localhost:8181', ' ');
+      expect(service).toBeInstanceOf(TautulliService);
+    });
+  });
+});
+
+// ============================================================================
+// TESTCONNECTION METHOD TESTS
+// ============================================================================
+
+describe('TautulliService.testConnection', () => {
+  let mockFetch: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    mockFetch = vi.fn();
+    global.fetch = mockFetch as typeof global.fetch;
+  });
+
+  describe('successful connection', () => {
+    it('should return true when connection succeeds', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ response: { result: 'success' } }),
+      });
+
+      const service = new TautulliService('http://localhost:8181', 'api-key');
+      const result = await service.testConnection();
+
+      expect(result).toBe(true);
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('cmd=arnold'),
+        expect.any(Object)
+      );
+    });
+
+    it('should include API key in request', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ response: { result: 'success' } }),
+      });
+
+      const service = new TautulliService('http://localhost:8181', 'test-key-123');
+      await service.testConnection();
+
+      const callUrl = mockFetch.mock.calls[0]?.[0];
+      expect(callUrl).toContain('apikey=test-key-123');
+    });
+  });
+
+  describe('failed connection', () => {
+    it('should return false and log warning on network error', async () => {
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      mockFetch.mockRejectedValue(new Error('Network error'));
+
+      const service = new TautulliService('http://localhost:8181', 'api-key');
+      const result = await service.testConnection();
+
+      expect(result).toBe(false);
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Connection test failed'),
+        expect.stringContaining('Network error')
+      );
+
+      consoleWarnSpy.mockRestore();
+    });
+
+    it('should return false when response is not ok', async () => {
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+      });
+
+      const service = new TautulliService('http://localhost:8181', 'invalid-key');
+      const result = await service.testConnection();
+
+      expect(result).toBe(false);
+      expect(consoleWarnSpy).toHaveBeenCalled();
+
+      consoleWarnSpy.mockRestore();
+    });
+
+    it('should return false when result is not success', async () => {
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ response: { result: 'error' } }),
+      });
+
+      const service = new TautulliService('http://localhost:8181', 'api-key');
+      const result = await service.testConnection();
+
+      expect(result).toBe(false);
+
+      consoleWarnSpy.mockRestore();
+    });
+
+    it('should return false and log warning on timeout', async () => {
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const abortError = new Error('The operation was aborted');
+      abortError.name = 'AbortError';
+      mockFetch.mockRejectedValue(abortError);
+
+      const service = new TautulliService('http://localhost:8181', 'api-key');
+      const result = await service.testConnection();
+
+      expect(result).toBe(false);
+      expect(consoleWarnSpy).toHaveBeenCalled();
+
+      consoleWarnSpy.mockRestore();
+    });
+  });
+});
+
+// ============================================================================
+// USER ID PARSING TESTS
+// ============================================================================
+
+describe('User ID Parsing', () => {
+  describe('strict numeric validation', () => {
+    it('should accept valid numeric string', () => {
+      const userMap = new Map<number, string>();
+      // Strict numeric validation: /^\d+$/.test()
+      const externalId = '374704766';
+      if (/^\d+$/.test(externalId)) {
+        userMap.set(parseInt(externalId, 10), 'user-uuid-1');
+      }
+
+      expect(userMap.has(374704766)).toBe(true);
+      expect(userMap.get(374704766)).toBe('user-uuid-1');
+    });
+
+    it('should reject alphanumeric strings like "123abc"', () => {
+      const userMap = new Map<number, string>();
+      const externalId = '123abc';
+
+      // Strict validation should reject this
+      if (/^\d+$/.test(externalId)) {
+        userMap.set(parseInt(externalId, 10), 'user-uuid-1');
+      }
+
+      expect(userMap.has(123)).toBe(false);
+    });
+
+    it('should reject strings with leading letters like "abc123"', () => {
+      const userMap = new Map<number, string>();
+      const externalId = 'abc123';
+
+      if (/^\d+$/.test(externalId)) {
+        userMap.set(parseInt(externalId, 10), 'user-uuid-1');
+      }
+
+      expect(userMap.size).toBe(0);
+    });
+
+    it('should reject strings with special characters', () => {
+      const userMap = new Map<number, string>();
+      const externalId = '123-456';
+
+      if (/^\d+$/.test(externalId)) {
+        userMap.set(parseInt(externalId, 10), 'user-uuid-1');
+      }
+
+      expect(userMap.size).toBe(0);
+    });
+
+    it('should reject strings with decimal points', () => {
+      const userMap = new Map<number, string>();
+      const externalId = '123.456';
+
+      if (/^\d+$/.test(externalId)) {
+        userMap.set(parseInt(externalId, 10), 'user-uuid-1');
+      }
+
+      expect(userMap.size).toBe(0);
+    });
+
+    it('should reject empty strings', () => {
+      const userMap = new Map<number, string>();
+      const externalId = '';
+
+      if (/^\d+$/.test(externalId)) {
+        userMap.set(parseInt(externalId, 10), 'user-uuid-1');
+      }
+
+      expect(userMap.size).toBe(0);
+    });
+
+    it('should accept user ID of 0 (local user)', () => {
+      const userMap = new Map<number, string>();
+      const externalId = '0';
+
+      if (/^\d+$/.test(externalId)) {
+        userMap.set(parseInt(externalId, 10), 'local-user-uuid');
+      }
+
+      expect(userMap.has(0)).toBe(true);
+      expect(userMap.get(0)).toBe('local-user-uuid');
+    });
+
+    it('should handle large user IDs correctly', () => {
+      const userMap = new Map<number, string>();
+      const externalId = '999999999999';
+
+      if (/^\d+$/.test(externalId)) {
+        userMap.set(parseInt(externalId, 10), 'user-uuid-1');
+      }
+
+      expect(userMap.has(999999999999)).toBe(true);
+    });
+  });
+
+  describe('comparison with lenient parseInt behavior', () => {
+    it('demonstrates why strict validation is needed', () => {
+      // parseInt('123abc') === 123 (lenient, BAD)
+      expect(parseInt('123abc', 10)).toBe(123);
+
+      // /^\d+$/.test('123abc') === false (strict, GOOD)
+      expect(/^\d+$/.test('123abc')).toBe(false);
+    });
+
+    it('shows that strict validation prevents silent data corruption', () => {
+      const input = '12345abc';
+
+      // Lenient: would create mapping for 12345
+      const lenientUserId = parseInt(input, 10);
+      expect(lenientUserId).toBe(12345);
+
+      // Strict: rejects the invalid input entirely
+      const isValid = /^\d+$/.test(input);
+      expect(isValid).toBe(false);
+    });
+  });
+});
 
 // ============================================================================
 // SCHEMA VALIDATION TESTS

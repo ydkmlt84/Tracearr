@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Engagement Tracking System Migration
 -- ============================================================================
--- This migration adds continuous aggregates and views for engagement tracking.
+-- This migration adds views for engagement tracking.
 -- It's non-destructive - sessions table remains the source of truth.
 --
 -- Key features:
@@ -10,17 +10,21 @@
 -- - Netflix-style play counting (cumulative_time / duration)
 -- - Engagement tiers (abandoned -> rewatched)
 -- - User behavior classification
+--
+-- NOTE: This creates a standard materialized view that works without TimescaleDB.
+-- When TimescaleDB is available, initTimescaleDB() replaces this with a
+-- continuous aggregate for automatic incremental refresh.
 -- ============================================================================
 
 -- ============================================================================
--- PHASE 1: Continuous Aggregate for Daily Content Watch Time
+-- PHASE 1: Daily Content Watch Time (Standard Materialized View)
 -- ============================================================================
 -- Filters out sessions < 2 minutes and aggregates by day/user/content
+-- Uses date_trunc instead of time_bucket for PostgreSQL compatibility
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS daily_content_engagement
-WITH (timescaledb.continuous, timescaledb.materialized_only = false) AS
+CREATE MATERIALIZED VIEW IF NOT EXISTS daily_content_engagement AS
 SELECT
-  time_bucket('1 day', started_at) AS day,
+  date_trunc('day', started_at) AS day,
   server_user_id,
   rating_key,
   -- Content metadata (use MAX to get consistent values)
@@ -43,18 +47,8 @@ SELECT
 FROM sessions
 WHERE rating_key IS NOT NULL
   AND total_duration_ms > 0  -- Only content with known duration
-GROUP BY day, server_user_id, rating_key
+GROUP BY date_trunc('day', started_at), server_user_id, rating_key
 WITH NO DATA;
-
---> statement-breakpoint
-
--- Add refresh policy (runs every 15 minutes, processes last 7 days)
-SELECT add_continuous_aggregate_policy('daily_content_engagement',
-  start_offset => INTERVAL '7 days',
-  end_offset => INTERVAL '1 hour',
-  schedule_interval => INTERVAL '15 minutes',
-  if_not_exists => true
-);
 
 --> statement-breakpoint
 

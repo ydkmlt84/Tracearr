@@ -67,6 +67,62 @@ async function getContinuousAggregates(): Promise<string[]> {
 }
 
 /**
+ * Check if a materialized view exists (regardless of type)
+ */
+async function materializedViewExists(viewName: string): Promise<boolean> {
+  try {
+    const result = await db.execute(sql`
+      SELECT EXISTS(
+        SELECT 1 FROM pg_matviews WHERE matviewname = ${viewName}
+      ) as exists
+    `);
+    return (result.rows[0] as { exists: boolean })?.exists ?? false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Drop a materialized view if it exists and is NOT a continuous aggregate.
+ * This is used to replace regular materialized views created by migrations
+ * with TimescaleDB continuous aggregates.
+ */
+async function dropRegularMaterializedViewIfExists(
+  viewName: string,
+  continuousAggregates: string[]
+): Promise<boolean> {
+  // Explicit allow-list validation (defense-in-depth)
+  const allowedViews = [
+    'daily_plays_by_user',
+    'daily_plays_by_server',
+    'daily_stats_summary',
+    'hourly_concurrent_streams',
+    'daily_content_engagement',
+  ];
+
+  if (!allowedViews.includes(viewName)) {
+    console.warn(`Attempted to drop unexpected view: ${viewName}`);
+    return false;
+  }
+
+  // Don't drop if it's already a continuous aggregate
+  if (continuousAggregates.includes(viewName)) {
+    return false;
+  }
+
+  // Check if it exists as a regular materialized view
+  const exists = await materializedViewExists(viewName);
+  if (!exists) {
+    return false;
+  }
+
+  // Drop it so we can recreate as continuous aggregate
+  // Use CASCADE to drop dependent views (they'll be recreated by createContinuousAggregates)
+  await db.execute(sql`DROP MATERIALIZED VIEW IF EXISTS ${sql.identifier(viewName)} CASCADE`);
+  return true;
+}
+
+/**
  * Check if compression is enabled on sessions
  */
 async function isCompressionEnabled(): Promise<boolean> {
@@ -671,6 +727,18 @@ export async function initTimescaleDB(): Promise<{
   ];
 
   const missingAggregates = expectedAggregates.filter((agg) => !existingAggregates.includes(agg));
+
+  // Check if any "missing" aggregates exist as regular materialized views
+  // (e.g., created by migrations for non-TimescaleDB compatibility)
+  // If so, drop them so we can recreate as continuous aggregates
+  for (const agg of missingAggregates) {
+    const dropped = await dropRegularMaterializedViewIfExists(agg, existingAggregates);
+    if (dropped) {
+      actions.push(
+        `Dropped regular materialized view ${agg} (will recreate as continuous aggregate)`
+      );
+    }
+  }
 
   if (missingAggregates.length > 0) {
     await createContinuousAggregates();

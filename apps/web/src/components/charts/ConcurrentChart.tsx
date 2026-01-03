@@ -83,7 +83,9 @@ export function ConcurrentChart({
             const categoryValue =
               typeof this.value === 'number' ? categories[this.value] : this.value;
             if (!categoryValue) return '';
-            const date = new Date(categoryValue);
+            const date = new Date(
+              categoryValue.includes('T') ? categoryValue : categoryValue + 'T00:00:00'
+            );
             if (isNaN(date.getTime())) return '';
             if (period === 'year') {
               // Short month name for yearly view (Dec, Jan, Feb)
@@ -149,7 +151,10 @@ export function ConcurrentChart({
           const points = this.points || [];
           // With categories, this.x is the index. Use the category value from points[0].key
           const categoryValue = points[0]?.key as string | undefined;
-          const date = categoryValue ? new Date(categoryValue) : null;
+          // Handle date-only strings by appending T00:00:00 for local parsing
+          const date = categoryValue
+            ? new Date(categoryValue.includes('T') ? categoryValue : categoryValue + 'T00:00:00')
+            : null;
           const dateStr =
             date && !isNaN(date.getTime())
               ? `${date.toLocaleDateString()} ${date.getHours()}:00`

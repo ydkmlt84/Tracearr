@@ -48,7 +48,9 @@ export function PlaysChart({ data, isLoading, height = 200, period = 'month' }: 
             const categoryValue =
               typeof this.value === 'number' ? categories[this.value] : this.value;
             if (!categoryValue) return '';
-            const date = new Date(categoryValue);
+            const date = new Date(
+              categoryValue.includes('T') ? categoryValue : categoryValue + 'T00:00:00'
+            );
             if (isNaN(date.getTime())) return '';
             if (period === 'year') {
               // Short month name for yearly view (Dec, Jan, Feb)
@@ -112,7 +114,9 @@ export function PlaysChart({ data, isLoading, height = 200, period = 'month' }: 
           // With categories, this.x is the index. Use this.point.category for the actual value
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const categoryValue = (this as any).point?.category as string | undefined;
-          const date = categoryValue ? new Date(categoryValue) : null;
+          const date = categoryValue
+            ? new Date(categoryValue.includes('T') ? categoryValue : categoryValue + 'T00:00:00')
+            : null;
           const dateStr =
             date && !isNaN(date.getTime())
               ? date.toLocaleDateString('en-US', {

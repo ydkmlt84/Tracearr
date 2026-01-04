@@ -74,6 +74,15 @@ export function createMockSession(overrides: Partial<Session> = {}): Session {
     videoDecision: 'directplay',
     audioDecision: 'directplay',
     bitrate: 10000,
+    // Live TV specific fields
+    channelTitle: null,
+    channelIdentifier: null,
+    channelThumb: null,
+    // Music track fields
+    artistName: null,
+    albumName: null,
+    trackNumber: null,
+    discNumber: null,
     ...overrides,
   };
 }

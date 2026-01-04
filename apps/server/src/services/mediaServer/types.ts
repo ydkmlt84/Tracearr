@@ -32,7 +32,7 @@ export interface MediaSession {
   /** Media metadata */
   media: {
     title: string;
-    type: 'movie' | 'episode' | 'track' | 'photo' | 'unknown';
+    type: 'movie' | 'episode' | 'track' | 'live' | 'photo' | 'unknown';
     /** Duration in milliseconds */
     durationMs: number;
     /** Release year */
@@ -51,6 +51,28 @@ export interface MediaSession {
     seasonName?: string;
     /** Show poster path */
     showThumbPath?: string;
+  };
+
+  /** Live TV-specific metadata (only present for live TV streams) */
+  live?: {
+    /** Channel name (e.g., "HBO", "ESPN") */
+    channelTitle: string;
+    /** Channel number or identifier */
+    channelIdentifier?: string;
+    /** Channel logo/thumbnail path */
+    channelThumb?: string;
+  };
+
+  /** Music track metadata (only present for tracks) */
+  music?: {
+    /** Artist name (undefined if unknown) */
+    artistName?: string;
+    /** Album name */
+    albumName?: string;
+    /** Track number in album */
+    trackNumber?: number;
+    /** Disc number for multi-disc albums */
+    discNumber?: number;
   };
 
   /** Playback state */
@@ -183,7 +205,7 @@ export interface MediaWatchHistoryItem {
   /** Item title */
   title: string;
   /** Media type */
-  type: 'movie' | 'episode' | 'track' | 'unknown';
+  type: 'movie' | 'episode' | 'track' | 'live' | 'photo' | 'unknown';
   /** When item was last watched (Unix timestamp or ISO string) */
   watchedAt: number | string;
   /** User ID who watched (if available) */

@@ -82,7 +82,7 @@ export interface BuildActiveSessionInput {
   processed: {
     sessionKey: string;
     state: 'playing' | 'paused';
-    mediaType: 'movie' | 'episode' | 'track';
+    mediaType: 'movie' | 'episode' | 'track' | 'live' | 'photo' | 'unknown';
     mediaTitle: string;
     grandparentTitle: string;
     seasonNumber: number;
@@ -103,6 +103,15 @@ export interface BuildActiveSessionInput {
     videoDecision: string;
     audioDecision: string;
     bitrate: number;
+    // Live TV specific fields
+    channelTitle: string | null;
+    channelIdentifier: string | null;
+    channelThumb: string | null;
+    // Music track metadata
+    artistName: string | null;
+    albumName: string | null;
+    trackNumber: number | null;
+    discNumber: number | null;
   };
 
   /** Server user info */
@@ -203,6 +212,16 @@ export function buildActiveSession(input: BuildActiveSessionInput): ActiveSessio
     videoDecision: processed.videoDecision,
     audioDecision: processed.audioDecision,
     bitrate: processed.bitrate,
+
+    // Live TV specific fields
+    channelTitle: processed.channelTitle,
+    channelIdentifier: processed.channelIdentifier,
+    channelThumb: processed.channelThumb,
+    // Music track metadata
+    artistName: processed.artistName,
+    albumName: processed.albumName,
+    trackNumber: processed.trackNumber,
+    discNumber: processed.discNumber,
 
     // Relationships
     user,
@@ -413,6 +432,15 @@ export async function createSessionWithRulesAtomic(
             videoDecision: processed.videoDecision,
             audioDecision: processed.audioDecision,
             bitrate: processed.bitrate,
+            // Live TV specific fields
+            channelTitle: processed.channelTitle,
+            channelIdentifier: processed.channelIdentifier,
+            channelThumb: processed.channelThumb,
+            // Music track metadata
+            artistName: processed.artistName,
+            albumName: processed.albumName,
+            trackNumber: processed.trackNumber,
+            discNumber: processed.discNumber,
           })
           .returning();
 
@@ -462,6 +490,15 @@ export async function createSessionWithRulesAtomic(
           videoDecision: processed.videoDecision,
           audioDecision: processed.audioDecision,
           bitrate: processed.bitrate,
+          // Live TV specific fields
+          channelTitle: processed.channelTitle,
+          channelIdentifier: processed.channelIdentifier,
+          channelThumb: processed.channelThumb,
+          // Music track metadata
+          artistName: processed.artistName,
+          albumName: processed.albumName,
+          trackNumber: processed.trackNumber,
+          discNumber: processed.discNumber,
         };
 
         // Evaluate rules

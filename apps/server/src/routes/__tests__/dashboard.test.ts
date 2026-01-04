@@ -139,6 +139,15 @@ function createActiveSession(overrides: Partial<ActiveSession> = {}): ActiveSess
     videoDecision: overrides.videoDecision ?? 'directplay',
     audioDecision: overrides.audioDecision ?? 'directplay',
     bitrate: overrides.bitrate ?? 20000,
+    // Live TV specific fields
+    channelTitle: overrides.channelTitle ?? null,
+    channelIdentifier: overrides.channelIdentifier ?? null,
+    channelThumb: overrides.channelThumb ?? null,
+    // Music track fields
+    artistName: overrides.artistName ?? null,
+    albumName: overrides.albumName ?? null,
+    trackNumber: overrides.trackNumber ?? null,
+    discNumber: overrides.discNumber ?? null,
     user: overrides.user ?? {
       id: randomUUID(),
       username: 'testuser',

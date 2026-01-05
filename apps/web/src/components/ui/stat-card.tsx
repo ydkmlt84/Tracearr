@@ -5,6 +5,7 @@
 
 import type { LucideIcon } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Link } from 'react-router';
 
 interface StatCardProps {
   icon: LucideIcon;
@@ -12,11 +13,12 @@ interface StatCardProps {
   value: string | number;
   subValue?: string;
   isLoading?: boolean;
+  href?: string;
 }
 
-export function StatCard({ icon: Icon, label, value, subValue, isLoading }: StatCardProps) {
-  return (
-    <div className="bg-card flex items-center gap-3 rounded-lg border p-3">
+export function StatCard({ icon: Icon, label, value, subValue, isLoading, href }: StatCardProps) {
+  const card = (
+    <div className="bg-card card-hover flex items-center gap-3 rounded-lg border p-3">
       <div className="bg-primary/10 flex h-9 w-9 shrink-0 items-center justify-center rounded-md">
         <Icon className="text-primary h-4 w-4" />
       </div>
@@ -37,6 +39,17 @@ export function StatCard({ icon: Icon, label, value, subValue, isLoading }: Stat
         )}
       </div>
     </div>
+  );
+
+  return href ? (
+    <Link
+      to={href}
+      className="group focus-visible:ring-ring focus-visible:ring-offset-background block rounded-lg focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+    >
+      {card}
+    </Link>
+  ) : (
+    card
   );
 }
 

@@ -22,6 +22,14 @@ import {
   type StreamDecisions,
 } from '../../../utils/transcodeNormalizer.js';
 import type { MediaSession } from '../types.js';
+import type {
+  SourceVideoDetails,
+  SourceAudioDetails,
+  StreamVideoDetails,
+  StreamAudioDetails,
+  TranscodeInfo,
+  SubtitleInfo,
+} from '@tracearr/shared';
 
 // Import and re-export cross-platform utilities
 export { calculateProgress } from './parserUtils.js';
@@ -40,6 +48,30 @@ export const FILTERED_ITEM_TYPES = new Set([
 
 /** Extra types that should be filtered (prerolls, theme songs/videos) */
 export const FILTERED_EXTRA_TYPES = new Set(['themesong', 'themevideo']);
+
+/** Stream type constants matching Jellyfin/Emby API */
+const STREAM_TYPE = {
+  VIDEO: 'Video',
+  AUDIO: 'Audio',
+  SUBTITLE: 'Subtitle',
+} as const;
+
+/**
+ * Map Jellyfin/Emby VideoRangeType enum to our dynamic range format.
+ * See: https://github.com/jellyfin/jellyfin/blob/master/MediaBrowser.Model/Entities/MediaStream.cs
+ */
+const VIDEO_RANGE_TYPE_MAP: Record<string, string> = {
+  SDR: 'SDR',
+  HDR: 'HDR',
+  HDR10: 'HDR10',
+  HDR10Plus: 'HDR10+',
+  HLG: 'HLG',
+  DOVi: 'Dolby Vision',
+  DOVI: 'Dolby Vision',
+  DOVIWithHDR10: 'Dolby Vision',
+  DOVIWithHLG: 'Dolby Vision',
+  DOVIWithHDR10Plus: 'Dolby Vision',
+};
 
 // ============================================================================
 // Core Utility Functions
@@ -338,4 +370,339 @@ export function shouldFilterItem(nowPlaying: Record<string, unknown>): boolean {
   }
 
   return false;
+}
+
+// ============================================================================
+// Stream Detail Extraction (shared between Jellyfin and Emby)
+// ============================================================================
+
+/**
+ * Find a stream by type from MediaStreams array.
+ * Prefers the default stream if multiple of same type exist.
+ */
+function findStreamByType(
+  mediaStreams: Array<Record<string, unknown>> | undefined,
+  type: string
+): Record<string, unknown> | undefined {
+  if (!Array.isArray(mediaStreams)) return undefined;
+
+  let defaultMatch: Record<string, unknown> | undefined;
+  let firstMatch: Record<string, unknown> | undefined;
+
+  for (const stream of mediaStreams) {
+    const streamType = parseOptionalString(stream.Type);
+
+    if (streamType?.toLowerCase() === type.toLowerCase()) {
+      if (!firstMatch) firstMatch = stream;
+      if (stream.IsDefault === true) {
+        defaultMatch = stream;
+        break;
+      }
+    }
+  }
+
+  return defaultMatch ?? firstMatch;
+}
+
+/**
+ * Map VideoRangeType to dynamic range string.
+ * Falls back to color attribute detection if VideoRangeType not available.
+ */
+function mapDynamicRange(stream: Record<string, unknown>): string {
+  // Try direct VideoRangeType first (most accurate)
+  const videoRangeType = parseOptionalString(stream.VideoRangeType);
+  if (videoRangeType && VIDEO_RANGE_TYPE_MAP[videoRangeType]) {
+    return VIDEO_RANGE_TYPE_MAP[videoRangeType];
+  }
+
+  // Fallback: check VideoRange (less specific)
+  const videoRange = parseOptionalString(stream.VideoRange);
+  if (videoRange?.toLowerCase() === 'hdr') {
+    // Try to determine specific HDR type from color attributes
+    const colorTransfer = parseOptionalString(stream.ColorTransfer);
+    if (colorTransfer === 'smpte2084') return 'HDR10';
+    if (colorTransfer === 'arib-std-b67') return 'HLG';
+    return 'HDR';
+  }
+
+  // Check color attributes as final fallback
+  const colorSpace = parseOptionalString(stream.ColorSpace);
+  const bitDepth = parseOptionalNumber(stream.BitDepth);
+  const colorTransfer = parseOptionalString(stream.ColorTransfer);
+
+  if (colorSpace?.includes('bt2020') || (bitDepth && bitDepth >= 10)) {
+    if (colorTransfer === 'smpte2084') return 'HDR10';
+    if (colorTransfer === 'arib-std-b67') return 'HLG';
+    if (colorSpace?.includes('bt2020')) return 'HDR';
+  }
+
+  return 'SDR';
+}
+
+/**
+ * Extract source video details from a video stream
+ */
+function extractSourceVideoDetails(stream: Record<string, unknown> | undefined): {
+  codec?: string;
+  width?: number;
+  height?: number;
+  details: SourceVideoDetails;
+} {
+  if (!stream) {
+    return { details: {} };
+  }
+
+  const codec = parseOptionalString(stream.Codec)?.toUpperCase();
+  const width = parseOptionalNumber(stream.Width);
+  const height = parseOptionalNumber(stream.Height);
+
+  const details: SourceVideoDetails = {};
+
+  // Bitrate (Jellyfin stores in bps, convert to kbps)
+  const bitrate = parseOptionalNumber(stream.BitRate);
+  if (bitrate) details.bitrate = Math.round(bitrate / 1000);
+
+  // Framerate - prefer RealFrameRate
+  const frameRate =
+    parseOptionalNumber(stream.RealFrameRate) ?? parseOptionalNumber(stream.AverageFrameRate);
+  if (frameRate) details.framerate = frameRate.toString();
+
+  // Dynamic range
+  const dynamicRange = mapDynamicRange(stream);
+  details.dynamicRange = dynamicRange;
+
+  // Profile and level
+  const profile = parseOptionalString(stream.Profile);
+  if (profile) details.profile = profile;
+
+  const level = parseOptionalNumber(stream.Level);
+  if (level) details.level = level.toString();
+
+  // Color information
+  const colorSpace = parseOptionalString(stream.ColorSpace);
+  if (colorSpace) details.colorSpace = colorSpace;
+
+  const colorDepth = parseOptionalNumber(stream.BitDepth);
+  if (colorDepth) details.colorDepth = colorDepth;
+
+  return { codec, width, height, details };
+}
+
+/**
+ * Extract source audio details from an audio stream
+ */
+function extractSourceAudioDetails(stream: Record<string, unknown> | undefined): {
+  codec?: string;
+  channels?: number;
+  details: SourceAudioDetails;
+} {
+  if (!stream) {
+    return { details: {} };
+  }
+
+  const codec = parseOptionalString(stream.Codec)?.toUpperCase();
+  const channels = parseOptionalNumber(stream.Channels);
+
+  const details: SourceAudioDetails = {};
+
+  // Bitrate (Jellyfin stores in bps, convert to kbps)
+  const bitrate = parseOptionalNumber(stream.BitRate);
+  if (bitrate) details.bitrate = Math.round(bitrate / 1000);
+
+  // Channel layout
+  const channelLayout = parseOptionalString(stream.ChannelLayout);
+  if (channelLayout) details.channelLayout = channelLayout;
+
+  // Language
+  const language = parseOptionalString(stream.Language);
+  if (language) details.language = language;
+
+  // Sample rate
+  const sampleRate = parseOptionalNumber(stream.SampleRate);
+  if (sampleRate) details.sampleRate = sampleRate;
+
+  return { codec, channels, details };
+}
+
+/**
+ * Extract subtitle info from a subtitle stream
+ */
+function extractSubtitleInfo(
+  stream: Record<string, unknown> | undefined
+): SubtitleInfo | undefined {
+  if (!stream) return undefined;
+
+  const info: SubtitleInfo = {};
+
+  const codec = parseOptionalString(stream.Codec);
+  if (codec) info.codec = codec.toUpperCase();
+
+  const language = parseOptionalString(stream.Language);
+  if (language) info.language = language;
+
+  const forced = stream.IsForced === true;
+  if (forced) info.forced = true;
+
+  // Note: Jellyfin doesn't expose subtitle decision (burn-in vs copy)
+  // like Plex does, so we leave info.decision undefined
+
+  return Object.keys(info).length > 0 ? info : undefined;
+}
+
+/**
+ * Extract transcode info from TranscodingInfo object
+ * Note: Jellyfin/Emby don't expose hardware acceleration details
+ */
+function extractTranscodeInfo(
+  transcodingInfo: Record<string, unknown> | undefined,
+  mediaSource: Record<string, unknown> | undefined
+): TranscodeInfo | undefined {
+  const info: TranscodeInfo = {};
+
+  // Source container
+  const sourceContainer = parseOptionalString(mediaSource?.Container);
+  if (sourceContainer) info.sourceContainer = sourceContainer.toUpperCase();
+
+  if (transcodingInfo) {
+    // Stream container (output)
+    const streamContainer = parseOptionalString(transcodingInfo.Container);
+    if (streamContainer) info.streamContainer = streamContainer.toUpperCase();
+
+    // Container decision
+    if (sourceContainer && streamContainer) {
+      info.containerDecision =
+        sourceContainer.toLowerCase() === streamContainer.toLowerCase() ? 'direct' : 'transcode';
+    }
+
+    // Note: Jellyfin/Emby don't expose these fields:
+    // - hwRequested, hwDecoding, hwEncoding
+    // - speed, throttled
+  }
+
+  return Object.keys(info).length > 0 ? info : undefined;
+}
+
+/**
+ * Extract stream video details (output after transcode)
+ */
+function extractStreamVideoDetails(
+  transcodingInfo: Record<string, unknown> | undefined,
+  sourceVideoDetails: SourceVideoDetails
+): { codec?: string; details: StreamVideoDetails } {
+  if (!transcodingInfo) {
+    // Direct play - stream details match source
+    return { details: {} };
+  }
+
+  const details: StreamVideoDetails = {};
+
+  // Transcode output dimensions
+  const width = parseOptionalNumber(transcodingInfo.Width);
+  if (width) details.width = width;
+
+  const height = parseOptionalNumber(transcodingInfo.Height);
+  if (height) details.height = height;
+
+  // Framerate preserved through transcode
+  if (sourceVideoDetails.framerate) {
+    details.framerate = sourceVideoDetails.framerate;
+  }
+
+  // Dynamic range may be tone-mapped (HDR → SDR)
+  // Jellyfin doesn't expose this, so assume preserved
+  if (sourceVideoDetails.dynamicRange) {
+    details.dynamicRange = sourceVideoDetails.dynamicRange;
+  }
+
+  const codec = parseOptionalString(transcodingInfo.VideoCodec)?.toUpperCase();
+
+  return { codec, details };
+}
+
+/**
+ * Extract stream audio details (output after transcode)
+ */
+function extractStreamAudioDetails(transcodingInfo: Record<string, unknown> | undefined): {
+  codec?: string;
+  details: StreamAudioDetails;
+} {
+  if (!transcodingInfo) {
+    return { details: {} };
+  }
+
+  const details: StreamAudioDetails = {};
+
+  const channels = parseOptionalNumber(transcodingInfo.AudioChannels);
+  if (channels) details.channels = channels;
+
+  const codec = parseOptionalString(transcodingInfo.AudioCodec)?.toUpperCase();
+
+  return { codec, details };
+}
+
+/** Result type for stream details extraction */
+export interface StreamDetailsResult {
+  sourceVideoCodec?: string;
+  sourceAudioCodec?: string;
+  sourceAudioChannels?: number;
+  sourceVideoDetails?: SourceVideoDetails;
+  sourceAudioDetails?: SourceAudioDetails;
+  streamVideoCodec?: string;
+  streamAudioCodec?: string;
+  streamVideoDetails?: StreamVideoDetails;
+  streamAudioDetails?: StreamAudioDetails;
+  transcodeInfo?: TranscodeInfo;
+  subtitleInfo?: SubtitleInfo;
+}
+
+/**
+ * Extract all stream details from a Jellyfin/Emby session.
+ * Shared by both platform parsers.
+ */
+export function extractStreamDetails(session: Record<string, unknown>): StreamDetailsResult {
+  const nowPlaying = getNestedObject(session, 'NowPlayingItem');
+  const transcodingInfo = getNestedObject(session, 'TranscodingInfo');
+
+  // Get MediaSources and MediaStreams
+  const mediaSources = nowPlaying?.MediaSources as Array<Record<string, unknown>> | undefined;
+  const mediaSource = mediaSources?.[0];
+  const mediaStreams = mediaSource?.MediaStreams as Array<Record<string, unknown>> | undefined;
+
+  // Find streams by type
+  const videoStream = findStreamByType(mediaStreams, STREAM_TYPE.VIDEO);
+  const audioStream = findStreamByType(mediaStreams, STREAM_TYPE.AUDIO);
+  const subtitleStream = findStreamByType(mediaStreams, STREAM_TYPE.SUBTITLE);
+
+  // Extract source details
+  const sourceVideo = extractSourceVideoDetails(videoStream);
+  const sourceAudio = extractSourceAudioDetails(audioStream);
+
+  // Extract stream (output) details
+  const streamVideo = extractStreamVideoDetails(transcodingInfo, sourceVideo.details);
+  const streamAudio = extractStreamAudioDetails(transcodingInfo);
+
+  // Extract transcode and subtitle info
+  const transcodeInfo = extractTranscodeInfo(transcodingInfo, mediaSource);
+  const subtitleInfo = extractSubtitleInfo(subtitleStream);
+
+  return {
+    // Scalar fields for indexing
+    sourceVideoCodec: sourceVideo.codec,
+    sourceAudioCodec: sourceAudio.codec,
+    sourceAudioChannels: sourceAudio.channels,
+    streamVideoCodec: streamVideo.codec ?? sourceVideo.codec,
+    streamAudioCodec: streamAudio.codec ?? sourceAudio.codec,
+
+    // JSONB details (only include if non-empty)
+    sourceVideoDetails:
+      Object.keys(sourceVideo.details).length > 0 ? sourceVideo.details : undefined,
+    sourceAudioDetails:
+      Object.keys(sourceAudio.details).length > 0 ? sourceAudio.details : undefined,
+    streamVideoDetails:
+      Object.keys(streamVideo.details).length > 0 ? streamVideo.details : undefined,
+    streamAudioDetails:
+      Object.keys(streamAudio.details).length > 0 ? streamAudio.details : undefined,
+    transcodeInfo,
+    subtitleInfo,
+  };
 }

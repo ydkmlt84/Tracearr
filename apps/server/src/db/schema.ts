@@ -48,6 +48,29 @@ export const ruleTypeEnum = [
 // Violation severity enum
 export const violationSeverityEnum = ['low', 'warning', 'high'] as const;
 
+// ============================================================
+// Stream Details JSONB Types (imported from shared package)
+// ============================================================
+
+import type {
+  SourceVideoDetails,
+  SourceAudioDetails,
+  StreamVideoDetails,
+  StreamAudioDetails,
+  TranscodeInfo,
+  SubtitleInfo,
+} from '@tracearr/shared';
+
+// Re-export for consumers of this module
+export type {
+  SourceVideoDetails,
+  SourceAudioDetails,
+  StreamVideoDetails,
+  StreamAudioDetails,
+  TranscodeInfo,
+  SubtitleInfo,
+};
+
 // Media servers (Plex/Jellyfin/Emby instances)
 export const servers = pgTable(
   'servers',
@@ -266,6 +289,32 @@ export const sessions = pgTable(
     albumName: varchar('album_name', { length: 255 }), // Album name
     trackNumber: integer('track_number'), // Track number in album
     discNumber: integer('disc_number'), // Disc number for multi-disc albums
+
+    // ============ Stream Details (Source Media) ============
+    // Scalar columns for high-frequency queries (indexed)
+    sourceVideoCodec: varchar('source_video_codec', { length: 50 }), // H264, HEVC, VP9, AV1
+    sourceVideoWidth: integer('source_video_width'), // pixels
+    sourceVideoHeight: integer('source_video_height'), // pixels
+    sourceAudioCodec: varchar('source_audio_codec', { length: 50 }), // TrueHD, DTS-HD MA, AAC
+    sourceAudioChannels: integer('source_audio_channels'), // 2, 6, 8
+
+    // ============ Stream Details (Delivered to Client) ============
+    streamVideoCodec: varchar('stream_video_codec', { length: 50 }), // Codec after transcode
+    streamAudioCodec: varchar('stream_audio_codec', { length: 50 }), // Codec after transcode
+
+    // ============ Detailed JSONB Fields ============
+    // Source video: bitrate, framerate, dynamicRange, aspectRatio, profile, level, colorSpace, colorDepth
+    sourceVideoDetails: jsonb('source_video_details').$type<SourceVideoDetails>(),
+    // Source audio: bitrate, channelLayout, language, sampleRate
+    sourceAudioDetails: jsonb('source_audio_details').$type<SourceAudioDetails>(),
+    // Stream video: bitrate, width, height, framerate, dynamicRange
+    streamVideoDetails: jsonb('stream_video_details').$type<StreamVideoDetails>(),
+    // Stream audio: bitrate, channels, language
+    streamAudioDetails: jsonb('stream_audio_details').$type<StreamAudioDetails>(),
+    // Transcode: containerDecision, sourceContainer, streamContainer, hwDecoding, hwEncoding, speed, throttled
+    transcodeInfo: jsonb('transcode_info').$type<TranscodeInfo>(),
+    // Subtitle: decision, codec, language, forced
+    subtitleInfo: jsonb('subtitle_info').$type<SubtitleInfo>(),
   },
   (table) => [
     index('sessions_server_user_time_idx').on(table.serverUserId, table.startedAt),

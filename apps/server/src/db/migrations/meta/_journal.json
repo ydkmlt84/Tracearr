@@ -232,6 +232,13 @@
       "when": 1767484800000,
       "tag": "0032_media_type_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1767571200000,
+      "tag": "0033_stream_details",
+      "breakpoints": true
     }
   ]
 }

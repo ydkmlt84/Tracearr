@@ -24,6 +24,13 @@ export type {
   Session,
   SessionWithDetails,
   ActiveSession,
+  SourceVideoDetails,
+  SourceAudioDetails,
+  StreamVideoDetails,
+  StreamAudioDetails,
+  TranscodeInfo,
+  SubtitleInfo,
+  StreamDetailFields,
   // Rule
   RuleType,
   ImpossibleTravelParams,
@@ -264,4 +271,4 @@ export {
 export { ROLE_PERMISSIONS, canLogin, hasMinRole, isOwner, isActive } from './types.js';
 
 // Session constants
-export { MEDIA_TYPES } from './types.js';
+export { MEDIA_TYPES, DEFAULT_STREAM_DETAILS } from './types.js';

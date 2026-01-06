@@ -142,7 +142,115 @@ export type SessionState = 'playing' | 'paused' | 'stopped';
 export const MEDIA_TYPES = ['movie', 'episode', 'track', 'live', 'photo', 'unknown'] as const;
 export type MediaType = (typeof MEDIA_TYPES)[number];
 
-export interface Session {
+// ============================================================================
+// Stream Detail Types (JSONB column schemas)
+// ============================================================================
+
+/** Source video details from original media file */
+export interface SourceVideoDetails {
+  bitrate?: number;
+  framerate?: string;
+  dynamicRange?: string; // 'SDR' | 'HDR10' | 'HLG' | 'Dolby Vision'
+  aspectRatio?: number;
+  profile?: string;
+  level?: string;
+  colorSpace?: string;
+  colorDepth?: number;
+}
+
+/** Source audio details from original media file */
+export interface SourceAudioDetails {
+  bitrate?: number;
+  channelLayout?: string;
+  language?: string;
+  sampleRate?: number;
+}
+
+/** Stream video details after transcode */
+export interface StreamVideoDetails {
+  bitrate?: number;
+  width?: number;
+  height?: number;
+  framerate?: string;
+  dynamicRange?: string;
+}
+
+/** Stream audio details after transcode */
+export interface StreamAudioDetails {
+  bitrate?: number;
+  channels?: number;
+  language?: string;
+}
+
+/** Transcode processing information */
+export interface TranscodeInfo {
+  containerDecision?: string;
+  sourceContainer?: string;
+  streamContainer?: string;
+  hwRequested?: boolean;
+  hwDecoding?: string;
+  hwEncoding?: string;
+  speed?: number;
+  throttled?: boolean;
+}
+
+/** Subtitle stream information */
+export interface SubtitleInfo {
+  decision?: string;
+  codec?: string;
+  language?: string;
+  forced?: boolean;
+}
+
+// ============================================================================
+// Stream Detail Fields (shared interface to eliminate duplication)
+// ============================================================================
+
+/**
+ * Common fields for stream metadata tracking.
+ * Used by Session, ProcessedSession, MediaSession.quality, and test fixtures.
+ * All fields are nullable for backwards compatibility with existing sessions.
+ */
+export interface StreamDetailFields {
+  // Source media details (original file)
+  sourceVideoCodec: string | null;
+  sourceAudioCodec: string | null;
+  sourceAudioChannels: number | null;
+  sourceVideoWidth: number | null;
+  sourceVideoHeight: number | null;
+  sourceVideoDetails: SourceVideoDetails | null;
+  sourceAudioDetails: SourceAudioDetails | null;
+  // Stream output details (delivered to client)
+  streamVideoCodec: string | null;
+  streamAudioCodec: string | null;
+  streamVideoDetails: StreamVideoDetails | null;
+  streamAudioDetails: StreamAudioDetails | null;
+  // Transcode and subtitle info
+  transcodeInfo: TranscodeInfo | null;
+  subtitleInfo: SubtitleInfo | null;
+}
+
+/**
+ * Default values for stream detail fields (all null).
+ * Use with spread operator for test fixtures and initial values.
+ */
+export const DEFAULT_STREAM_DETAILS: StreamDetailFields = {
+  sourceVideoCodec: null,
+  sourceAudioCodec: null,
+  sourceAudioChannels: null,
+  sourceVideoWidth: null,
+  sourceVideoHeight: null,
+  sourceVideoDetails: null,
+  sourceAudioDetails: null,
+  streamVideoCodec: null,
+  streamAudioCodec: null,
+  streamVideoDetails: null,
+  streamAudioDetails: null,
+  transcodeInfo: null,
+  subtitleInfo: null,
+};
+
+export interface Session extends StreamDetailFields {
   id: string;
   serverId: string;
   serverUserId: string;

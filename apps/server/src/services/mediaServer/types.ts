@@ -5,7 +5,15 @@
  * Enables code reuse across different media server implementations.
  */
 
-import type { ServerType } from '@tracearr/shared';
+import type {
+  ServerType,
+  SourceVideoDetails,
+  SourceAudioDetails,
+  StreamVideoDetails,
+  StreamAudioDetails,
+  TranscodeInfo,
+  SubtitleInfo,
+} from '@tracearr/shared';
 
 // ============================================================================
 // Session Types
@@ -122,6 +130,34 @@ export interface MediaSession {
     videoWidth?: number;
     /** Video height in pixels (fallback for resolution calculation) */
     videoHeight?: number;
+
+    // ============ Source Media Details (Original file) ============
+    /** Source video codec (H264, HEVC, VP9, AV1) */
+    sourceVideoCodec?: string;
+    /** Source audio codec (TrueHD, DTS-HD MA, AAC, FLAC) */
+    sourceAudioCodec?: string;
+    /** Source audio channel count (2, 6, 8) */
+    sourceAudioChannels?: number;
+    /** Source video details (JSONB) */
+    sourceVideoDetails?: SourceVideoDetails;
+    /** Source audio details (JSONB) */
+    sourceAudioDetails?: SourceAudioDetails;
+
+    // ============ Stream Output Details (Delivered to client) ============
+    /** Stream video codec after transcode */
+    streamVideoCodec?: string;
+    /** Stream audio codec after transcode */
+    streamAudioCodec?: string;
+    /** Stream video details (JSONB) */
+    streamVideoDetails?: StreamVideoDetails;
+    /** Stream audio details (JSONB) */
+    streamAudioDetails?: StreamAudioDetails;
+
+    // ============ Transcode & Subtitle Info ============
+    /** Transcode processing details (JSONB) */
+    transcodeInfo?: TranscodeInfo;
+    /** Subtitle stream details (JSONB) */
+    subtitleInfo?: SubtitleInfo;
   };
 
   /**

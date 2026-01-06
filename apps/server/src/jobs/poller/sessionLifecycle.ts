@@ -6,7 +6,8 @@
  */
 
 import { eq, and, desc, isNull, gte } from 'drizzle-orm';
-import { TIME_MS, type ActiveSession } from '@tracearr/shared';
+import { TIME_MS, type ActiveSession, type StreamDetailFields } from '@tracearr/shared';
+import { pickStreamDetailFields } from './sessionMapper.js';
 import { db } from '../../db/client.js';
 import { sessions } from '../../db/schema.js';
 import type { GeoLocation } from '../../services/geoip.js';
@@ -78,8 +79,8 @@ export interface BuildActiveSessionInput {
     externalSessionId?: string | null;
   };
 
-  /** Processed session data from media server */
-  processed: {
+  /** Processed session data from media server (extends StreamDetailFields for DRY) */
+  processed: StreamDetailFields & {
     sessionKey: string;
     state: 'playing' | 'paused';
     mediaType: 'movie' | 'episode' | 'track' | 'live' | 'photo' | 'unknown';
@@ -212,6 +213,9 @@ export function buildActiveSession(input: BuildActiveSessionInput): ActiveSessio
     videoDecision: processed.videoDecision,
     audioDecision: processed.audioDecision,
     bitrate: processed.bitrate,
+
+    // Stream details (source media, stream output, transcode/subtitle info)
+    ...pickStreamDetailFields(processed),
 
     // Live TV specific fields
     channelTitle: processed.channelTitle,
@@ -432,6 +436,8 @@ export async function createSessionWithRulesAtomic(
             videoDecision: processed.videoDecision,
             audioDecision: processed.audioDecision,
             bitrate: processed.bitrate,
+            // Stream details (source media, stream output, transcode/subtitle info)
+            ...pickStreamDetailFields(processed),
             // Live TV specific fields
             channelTitle: processed.channelTitle,
             channelIdentifier: processed.channelIdentifier,
@@ -490,6 +496,8 @@ export async function createSessionWithRulesAtomic(
           videoDecision: processed.videoDecision,
           audioDecision: processed.audioDecision,
           bitrate: processed.bitrate,
+          // Stream details (source media, stream output, transcode/subtitle info)
+          ...pickStreamDetailFields(processed),
           // Live TV specific fields
           channelTitle: processed.channelTitle,
           channelIdentifier: processed.channelIdentifier,

@@ -6,7 +6,7 @@
  * - Database row → Session type (for application use)
  */
 
-import { type Session, MEDIA_TYPES } from '@tracearr/shared';
+import { type Session, type StreamDetailFields, MEDIA_TYPES } from '@tracearr/shared';
 import type { MediaSession } from '../../services/mediaServer/types.js';
 import type { ProcessedSession } from './types.js';
 import { normalizeClient } from '../../utils/platformNormalizer.js';
@@ -54,6 +54,58 @@ function mapMediaType(parserType: string): ProcessedSession['mediaType'] {
     `[sessionMapper] Unexpected media type encountered: "${parserType}", defaulting to "unknown"`
   );
   return 'unknown';
+}
+
+// ============================================================================
+// Stream Detail Helpers (DRY)
+// ============================================================================
+
+/**
+ * Extract stream detail fields from MediaSession quality data.
+ * Handles the field name mapping (e.g., videoWidth → sourceVideoWidth).
+ */
+export function extractStreamDetailsFromQuality(
+  quality: MediaSession['quality']
+): StreamDetailFields {
+  return {
+    sourceVideoCodec: quality.sourceVideoCodec ?? null,
+    sourceAudioCodec: quality.sourceAudioCodec ?? null,
+    sourceAudioChannels: quality.sourceAudioChannels ?? null,
+    sourceVideoWidth: quality.videoWidth ?? null,
+    sourceVideoHeight: quality.videoHeight ?? null,
+    sourceVideoDetails: quality.sourceVideoDetails ?? null,
+    sourceAudioDetails: quality.sourceAudioDetails ?? null,
+    streamVideoCodec: quality.streamVideoCodec ?? null,
+    streamAudioCodec: quality.streamAudioCodec ?? null,
+    streamVideoDetails: quality.streamVideoDetails ?? null,
+    streamAudioDetails: quality.streamAudioDetails ?? null,
+    transcodeInfo: quality.transcodeInfo ?? null,
+    subtitleInfo: quality.subtitleInfo ?? null,
+  };
+}
+
+/**
+ * Pick stream detail fields from any object that has them.
+ * Useful for DB inserts where we spread ProcessedSession fields.
+ */
+export function pickStreamDetailFields<T extends StreamDetailFields>(
+  source: T
+): StreamDetailFields {
+  return {
+    sourceVideoCodec: source.sourceVideoCodec,
+    sourceAudioCodec: source.sourceAudioCodec,
+    sourceAudioChannels: source.sourceAudioChannels,
+    sourceVideoWidth: source.sourceVideoWidth,
+    sourceVideoHeight: source.sourceVideoHeight,
+    sourceVideoDetails: source.sourceVideoDetails,
+    sourceAudioDetails: source.sourceAudioDetails,
+    streamVideoCodec: source.streamVideoCodec,
+    streamAudioCodec: source.streamAudioCodec,
+    streamVideoDetails: source.streamVideoDetails,
+    streamAudioDetails: source.streamAudioDetails,
+    transcodeInfo: source.transcodeInfo,
+    subtitleInfo: source.subtitleInfo,
+  };
 }
 
 // ============================================================================
@@ -133,6 +185,8 @@ export function mapMediaSession(
     videoDecision: session.quality.videoDecision,
     audioDecision: session.quality.audioDecision,
     bitrate: session.quality.bitrate,
+    // Stream details (source media, stream output, transcode/subtitle info)
+    ...extractStreamDetailsFromQuality(session.quality),
     state: session.playback.state === 'paused' ? 'paused' : 'playing',
     totalDurationMs: session.media.durationMs,
     progressMs: session.playback.positionMs,
@@ -196,6 +250,8 @@ export function mapSessionRow(s: typeof sessions.$inferSelect): Session {
     videoDecision: s.videoDecision,
     audioDecision: s.audioDecision,
     bitrate: s.bitrate,
+    // Stream details (source media, stream output, transcode/subtitle info)
+    ...pickStreamDetailFields(s),
     // Live TV fields
     channelTitle: s.channelTitle,
     channelIdentifier: s.channelIdentifier,

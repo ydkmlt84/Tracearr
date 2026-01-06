@@ -5,7 +5,14 @@
  * Separated from implementation for clean imports and testing.
  */
 
-import type { Session, SessionState, Rule, RuleParams, ActiveSession } from '@tracearr/shared';
+import type {
+  Session,
+  SessionState,
+  Rule,
+  RuleParams,
+  ActiveSession,
+  StreamDetailFields,
+} from '@tracearr/shared';
 import type { sessions } from '../../db/schema.js';
 import type { GeoLocation } from '../../services/geoip.js';
 import type { ViolationInsertResult } from './violations.js';
@@ -47,9 +54,10 @@ export interface ServerWithToken {
 
 /**
  * Processed session format after mapping from MediaSession
- * Contains all fields needed for database storage and display
+ * Contains all fields needed for database storage and display.
+ * Extends StreamDetailFields to inherit stream metadata fields.
  */
-export interface ProcessedSession {
+export interface ProcessedSession extends StreamDetailFields {
   /** Unique session key from media server */
   sessionKey: string;
   /** Plex Session.id - required for termination API (different from sessionKey) */

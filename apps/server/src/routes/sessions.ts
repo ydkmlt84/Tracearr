@@ -175,7 +175,20 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
           s.is_transcode,
           s.video_decision,
           s.audio_decision,
-          s.bitrate
+          s.bitrate,
+          s.source_video_codec,
+          s.source_audio_codec,
+          s.source_audio_channels,
+          s.source_video_width,
+          s.source_video_height,
+          s.source_video_details,
+          s.source_audio_details,
+          s.stream_video_codec,
+          s.stream_audio_codec,
+          s.stream_video_details,
+          s.stream_audio_details,
+          s.transcode_info,
+          s.subtitle_info
         FROM grouped_sessions gs
         JOIN sessions s ON s.id = gs.first_session_id
         JOIN server_users su ON su.id = s.server_user_id
@@ -229,6 +242,19 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         video_decision: string | null;
         audio_decision: string | null;
         bitrate: number | null;
+        source_video_codec: string | null;
+        source_audio_codec: string | null;
+        source_audio_channels: number | null;
+        source_video_width: number | null;
+        source_video_height: number | null;
+        source_video_details: Record<string, unknown> | null;
+        source_audio_details: Record<string, unknown> | null;
+        stream_video_codec: string | null;
+        stream_audio_codec: string | null;
+        stream_video_details: Record<string, unknown> | null;
+        stream_audio_details: Record<string, unknown> | null;
+        transcode_info: Record<string, unknown> | null;
+        subtitle_info: Record<string, unknown> | null;
       }[]
     ).map((row) => ({
       id: row.id,
@@ -279,6 +305,20 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       videoDecision: row.video_decision,
       audioDecision: row.audio_decision,
       bitrate: row.bitrate,
+      // Stream detail fields
+      sourceVideoCodec: row.source_video_codec,
+      sourceAudioCodec: row.source_audio_codec,
+      sourceAudioChannels: row.source_audio_channels,
+      sourceVideoWidth: row.source_video_width,
+      sourceVideoHeight: row.source_video_height,
+      sourceVideoDetails: row.source_video_details,
+      sourceAudioDetails: row.source_audio_details,
+      streamVideoCodec: row.stream_video_codec,
+      streamAudioCodec: row.stream_audio_codec,
+      streamVideoDetails: row.stream_video_details,
+      streamAudioDetails: row.stream_audio_details,
+      transcodeInfo: row.transcode_info,
+      subtitleInfo: row.subtitle_info,
     }));
 
     // Get total count of unique plays
@@ -563,7 +603,20 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
           s.is_transcode,
           s.video_decision,
           s.audio_decision,
-          s.bitrate
+          s.bitrate,
+          s.source_video_codec,
+          s.source_audio_codec,
+          s.source_audio_channels,
+          s.source_video_width,
+          s.source_video_height,
+          s.source_video_details,
+          s.source_audio_details,
+          s.stream_video_codec,
+          s.stream_audio_codec,
+          s.stream_video_details,
+          s.stream_audio_details,
+          s.transcode_info,
+          s.subtitle_info
         FROM grouped_sessions gs
         JOIN sessions s ON s.id = gs.first_session_id
         JOIN server_users su ON su.id = s.server_user_id
@@ -628,6 +681,19 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         video_decision: string | null;
         audio_decision: string | null;
         bitrate: number | null;
+        source_video_codec: string | null;
+        source_audio_codec: string | null;
+        source_audio_channels: number | null;
+        source_video_width: number | null;
+        source_video_height: number | null;
+        source_video_details: Record<string, unknown> | null;
+        source_audio_details: Record<string, unknown> | null;
+        stream_video_codec: string | null;
+        stream_audio_codec: string | null;
+        stream_video_details: Record<string, unknown> | null;
+        stream_audio_details: Record<string, unknown> | null;
+        transcode_info: Record<string, unknown> | null;
+        subtitle_info: Record<string, unknown> | null;
       }[]
     ).map((row) => ({
       id: row.id,
@@ -678,6 +744,20 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       videoDecision: row.video_decision,
       audioDecision: row.audio_decision,
       bitrate: row.bitrate,
+      // Stream detail fields
+      sourceVideoCodec: row.source_video_codec,
+      sourceAudioCodec: row.source_audio_codec,
+      sourceAudioChannels: row.source_audio_channels,
+      sourceVideoWidth: row.source_video_width,
+      sourceVideoHeight: row.source_video_height,
+      sourceVideoDetails: row.source_video_details,
+      sourceAudioDetails: row.source_audio_details,
+      streamVideoCodec: row.stream_video_codec,
+      streamAudioCodec: row.stream_audio_codec,
+      streamVideoDetails: row.stream_video_details,
+      streamAudioDetails: row.stream_audio_details,
+      transcodeInfo: row.transcode_info,
+      subtitleInfo: row.subtitle_info,
     }));
 
     // Get aggregates for the entire filtered result set (without pagination)
@@ -994,6 +1074,20 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         videoDecision: sessions.videoDecision,
         audioDecision: sessions.audioDecision,
         bitrate: sessions.bitrate,
+        // Stream detail columns
+        sourceVideoCodec: sessions.sourceVideoCodec,
+        sourceAudioCodec: sessions.sourceAudioCodec,
+        sourceAudioChannels: sessions.sourceAudioChannels,
+        sourceVideoWidth: sessions.sourceVideoWidth,
+        sourceVideoHeight: sessions.sourceVideoHeight,
+        sourceVideoDetails: sessions.sourceVideoDetails,
+        sourceAudioDetails: sessions.sourceAudioDetails,
+        streamVideoCodec: sessions.streamVideoCodec,
+        streamAudioCodec: sessions.streamAudioCodec,
+        streamVideoDetails: sessions.streamVideoDetails,
+        streamAudioDetails: sessions.streamAudioDetails,
+        transcodeInfo: sessions.transcodeInfo,
+        subtitleInfo: sessions.subtitleInfo,
       })
       .from(sessions)
       .innerJoin(serverUsers, eq(sessions.serverUserId, serverUsers.id))
@@ -1062,6 +1156,20 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       videoDecision: row.videoDecision,
       audioDecision: row.audioDecision,
       bitrate: row.bitrate,
+      // Stream detail fields
+      sourceVideoCodec: row.sourceVideoCodec,
+      sourceAudioCodec: row.sourceAudioCodec,
+      sourceAudioChannels: row.sourceAudioChannels,
+      sourceVideoWidth: row.sourceVideoWidth,
+      sourceVideoHeight: row.sourceVideoHeight,
+      sourceVideoDetails: row.sourceVideoDetails,
+      sourceAudioDetails: row.sourceAudioDetails,
+      streamVideoCodec: row.streamVideoCodec,
+      streamAudioCodec: row.streamAudioCodec,
+      streamVideoDetails: row.streamVideoDetails,
+      streamAudioDetails: row.streamAudioDetails,
+      transcodeInfo: row.transcodeInfo,
+      subtitleInfo: row.subtitleInfo,
     };
   });
 

@@ -703,13 +703,26 @@ export class TautulliService {
             geoCache.set(ipForLookup, geo);
           }
 
-          // Map media type
-          let mediaType: 'movie' | 'episode' | 'track' = 'movie';
-          if (record.media_type === 'episode') {
+          // Map media type - check live flag FIRST (live content reports as movie/episode)
+          let mediaType: 'movie' | 'episode' | 'track' | 'live' = 'movie';
+          if (record.live === 1) {
+            mediaType = 'live';
+          } else if (record.media_type === 'episode') {
             mediaType = 'episode';
           } else if (record.media_type === 'track') {
             mediaType = 'track';
           }
+
+          // Music-specific fields (only for tracks)
+          const isMusic = record.media_type === 'track';
+          const artistName = isMusic ? record.grandparent_title || null : null;
+          const albumName = isMusic ? record.parent_title || null : null;
+          const trackNumber =
+            isMusic && typeof record.media_index === 'number' ? record.media_index : null;
+          const discNumber =
+            isMusic && typeof record.parent_media_index === 'number'
+              ? record.parent_media_index
+              : null;
 
           const sessionKey =
             record.session_key != null
@@ -773,6 +786,15 @@ export class TautulliService {
               };
             })(),
             bitrate: null,
+            // Music fields (only populated for tracks)
+            artistName,
+            albumName,
+            trackNumber,
+            discNumber,
+            // Live TV fields (not available in get_history API - would require get_stream_data)
+            channelTitle: null,
+            channelIdentifier: null,
+            channelThumb: null,
           });
 
           // Track session grouping for referenceId linking

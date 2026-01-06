@@ -14,8 +14,31 @@ import {
   getNestedObject,
   parseDateString,
 } from '../../../utils/parsing.js';
+import type { StreamDecisions } from '../../../utils/transcodeNormalizer.js';
 import type { MediaSession, MediaUser, MediaLibrary, MediaWatchHistoryItem } from '../types.js';
-import { parseMediaType, buildUserImagePath } from './jellyfinEmbyUtils.js';
+import {
+  ticksToMs,
+  parseMediaType,
+  calculateProgress,
+  getBitrate,
+  getVideoDimensions,
+  buildItemImagePath,
+  buildUserImagePath,
+  shouldFilterItem,
+  extractLiveTvMetadata,
+  extractMusicMetadata,
+  extractStreamDetails,
+} from './jellyfinEmbyUtils.js';
+
+// ============================================================================
+// Stream Decisions Function Type
+// ============================================================================
+
+/**
+ * Function type for platform-specific stream decision logic.
+ * Jellyfin and Emby have different behaviors for DirectStream handling.
+ */
+export type StreamDecisionsFn = (session: Record<string, unknown>) => StreamDecisions;
 
 // ============================================================================
 // Shared Types
@@ -88,6 +111,118 @@ export function parseSessionsResponse(
     if (parsed) results.push(parsed);
   }
   return results;
+}
+
+/**
+ * Core session parsing logic shared between Jellyfin and Emby.
+ *
+ * @param session - Raw session data from the API
+ * @param getStreamDecisions - Platform-specific stream decision function
+ * @param supportsLastPausedDate - Whether the platform supports LastPausedDate (Jellyfin only)
+ * @returns Parsed MediaSession or null if no active playback
+ */
+export function parseSessionCore(
+  session: Record<string, unknown>,
+  getStreamDecisions: StreamDecisionsFn,
+  supportsLastPausedDate: boolean
+): MediaSession | null {
+  const nowPlaying = getNestedObject(session, 'NowPlayingItem');
+  if (!nowPlaying) return null; // No active playback
+
+  // Filter out non-primary content (trailers, prerolls, theme songs/videos)
+  if (shouldFilterItem(nowPlaying)) return null;
+
+  const playState = getNestedObject(session, 'PlayState');
+  const imageTags = getNestedObject(nowPlaying, 'ImageTags');
+
+  const durationMs = ticksToMs(nowPlaying.RunTimeTicks);
+  const positionMs = ticksToMs(playState?.PositionTicks);
+  const mediaType = parseMediaType(nowPlaying.Type);
+
+  // Get stream decisions using the platform-specific logic
+  const { videoDecision, audioDecision, isTranscode } = getStreamDecisions(session);
+
+  // Build full image paths (not just image tag IDs)
+  const itemId = parseString(nowPlaying.Id);
+  const userId = parseString(session.UserId);
+  const userImageTag = parseOptionalString(session.UserPrimaryImageTag);
+  const primaryImageTag = imageTags?.Primary ? parseString(imageTags.Primary) : undefined;
+
+  // Parse lastPausedDate only if the platform supports it (Jellyfin only)
+  let lastPausedDate: Date | undefined;
+  if (supportsLastPausedDate) {
+    const lastPausedDateStr = parseOptionalString(session.LastPausedDate);
+    lastPausedDate = lastPausedDateStr ? new Date(lastPausedDateStr) : undefined;
+  }
+
+  const result: MediaSession = {
+    sessionKey: parseString(session.Id),
+    mediaId: itemId,
+    user: {
+      id: userId,
+      username: parseString(session.UserName),
+      thumb: buildUserImagePath(userId, userImageTag),
+    },
+    media: {
+      title: parseString(nowPlaying.Name),
+      type: mediaType,
+      durationMs,
+      year: parseOptionalNumber(nowPlaying.ProductionYear),
+      thumbPath: buildItemImagePath(itemId, primaryImageTag),
+    },
+    playback: {
+      state: playState?.IsPaused ? 'paused' : 'playing',
+      positionMs,
+      progressPercent: calculateProgress(positionMs, durationMs),
+    },
+    player: {
+      name: parseString(session.DeviceName),
+      deviceId: parseString(session.DeviceId),
+      product: parseOptionalString(session.Client),
+      device: parseOptionalString(session.DeviceType),
+      platform: undefined, // Neither Jellyfin nor Emby provides platform separately
+    },
+    network: {
+      ipAddress: parseString(session.RemoteEndPoint),
+      isLocal: false,
+    },
+    quality: {
+      bitrate: getBitrate(session),
+      isTranscode,
+      videoDecision,
+      audioDecision,
+      ...getVideoDimensions(session),
+      ...extractStreamDetails(session),
+    },
+    lastPausedDate,
+  };
+
+  // Add episode-specific metadata if this is an episode
+  if (mediaType === 'episode') {
+    const seriesId = parseOptionalString(nowPlaying.SeriesId);
+    const seriesImageTag = parseOptionalString(nowPlaying.SeriesPrimaryImageTag);
+
+    result.episode = {
+      showTitle: parseString(nowPlaying.SeriesName),
+      showId: seriesId,
+      seasonNumber: parseNumber(nowPlaying.ParentIndexNumber),
+      episodeNumber: parseNumber(nowPlaying.IndexNumber),
+      seasonName: parseOptionalString(nowPlaying.SeasonName),
+      showThumbPath: seriesId ? buildItemImagePath(seriesId, seriesImageTag) : undefined,
+    };
+  }
+
+  // Add Live TV metadata if this is a live stream
+  if (mediaType === 'live') {
+    result.live = extractLiveTvMetadata(nowPlaying);
+  }
+
+  // Add music track metadata if this is a track
+  if (mediaType === 'track') {
+    result.music = extractMusicMetadata(nowPlaying);
+  }
+
+  return result;
 }
 
 // ============================================================================
